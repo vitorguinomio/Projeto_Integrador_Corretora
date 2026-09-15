@@ -24,6 +24,7 @@ cd Projeto_Integrador_Corretora
 docker compose up -d --build
 ```
 
+O Frontend estará disponível em: `http://localhost:3000`  
 A API estará disponível em: `http://localhost:8080`  
 O banco PostgreSQL estará na porta: `localhost:5432`
 
@@ -38,8 +39,9 @@ O banco PostgreSQL estará na porta: `localhost:5432`
 
 ---
 
-## 🛠️ Estrutura do Projeto (Package by Feature)
+## 🛠️ Estrutura do Projeto
 
+- `frontend/`: Interface Web de teste em **React + Vite** servida por **Nginx** (porta 3000).
 - `core/`: Componentes transversais compartilhados (segurança, CORS, tratamento global de erros).
 - `features/auth/`: Módulo de autenticação e controle de acesso.
 - `features/clientes/`: Gestão e cadastro de clientes.

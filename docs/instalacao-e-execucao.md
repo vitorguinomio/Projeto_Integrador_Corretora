@@ -165,10 +165,11 @@ cd Projeto_Integrador_Corretora
 O arquivo `docker-compose.yml` está configurado para subir:
 1. **`postgres`**: Banco de dados PostgreSQL 16 Alpine, com script de schema inicial (`01-schema.sql`) executado automaticamente na primeira inicialização.
 2. **`app`**: A aplicação Spring Boot (Java 21) compilada e empacotada automaticamente via Dockerfile multi-stage.
+3. **`frontend`**: Aplicação SPA React + Vite empacotada com servidor Nginx Alpine, servindo a interface web e provendo proxy reverso das rotas `/api/` para o Spring Boot.
 
 ---
 
-### Cenário A: Subir Banco de Dados + Aplicação (Completo)
+### Cenário A: Subir Banco de Dados + Aplicação + Frontend (Completo)
 
 Para compilar o código e subir todos os serviços de uma vez em segundo plano (modo detached):
 
@@ -177,9 +178,10 @@ docker compose up -d --build
 ```
 
 - A primeira execução baixará as imagens e compilará o projeto.
-- O PostgreSQL iniciará primeiro e, assim que estiver saudável (`healthy`), a aplicação Spring Boot subirá.
-- A aplicação estará disponível em: `http://localhost:8080`
-- O PostgreSQL estará disponível na porta: `localhost:5432` (Usuário: `postgres`, Senha: `postgres`, Database: `corretora_db`)
+- O PostgreSQL iniciará primeiro e, assim que estiver saudável (`healthy`), a aplicação Spring Boot subirá, seguida pelo contêiner do frontend.
+- **Frontend (Web)**: Disponível no navegador em `http://localhost:3000`
+- **Backend (API)**: Disponível em `http://localhost:8080`
+- **PostgreSQL**: Disponível na porta `localhost:5432` (Usuário: `postgres`, Senha: `postgres`, Database: `corretora_db`)
 
 ---
 
@@ -191,7 +193,13 @@ Se você preferir executar o Spring Boot diretamente na sua IDE (ex: IntelliJ ID
 docker compose up -d postgres
 ```
 
-Depois, execute a classe `com.hcr.corretora.Application` diretamente na sua IDE. Ela se conectará automaticamente ao PostgreSQL rodando no Docker em `localhost:5432`.
+Depois, execute a classe `com.hcr.corretora.Application` diretamente na sua IDE. Ela se conectará automaticamente ao PostgreSQL rodando no Docker em `localhost:5432`. Caso queira subir também o frontend em modo de desenvolvimento:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+O Vite iniciará o frontend em `http://localhost:3000` com proxy reverso apontando para `http://localhost:8080`.
 
 ---
 
@@ -203,11 +211,13 @@ Abaixo estão os comandos mais frequentes no dia a dia:
 |---|---|
 | **Ver status dos containers** | `docker compose ps` |
 | **Acompanhar logs de todos os serviços** | `docker compose logs -f` |
+| **Acompanhar logs apenas do frontend** | `docker compose logs -f frontend` |
 | **Acompanhar logs apenas da aplicação** | `docker compose logs -f app` |
 | **Acompanhar logs apenas do banco** | `docker compose logs -f postgres` |
 | **Parar os containers mantendo os dados** | `docker compose down` |
 | **Parar e remover volumes (Resetar o banco)** | `docker compose down -v` |
-| **Reconstruir a aplicação após alterações** | `docker compose up -d --build app` |
+| **Reconstruir apenas o frontend** | `docker compose up -d --build frontend` |
+| **Reconstruir a aplicação backend** | `docker compose up -d --build app` |
 
 ---
 
