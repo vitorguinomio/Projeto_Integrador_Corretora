@@ -19,3 +19,23 @@ Este documento registra detalhadamente as entregas efetuadas no repositório Git
   6. `features/administradores`: Entidade `Administrador`, `AdministradorRepository`, DTOs, `AdministradorService` e `AdministradorController`.
   7. `features/clientes`: Entidades `Cliente`, `Endereco`, `Telefone`, repositórios `ClienteRepository`, `EnderecoRepository`, `TelefoneRepository`, DTOs e `ClienteService` com CRUD completo, busca por termo, validação e `ClienteController`.
   8. `.agents/skills/commit-por-etapas/SKILL.md` e `.skills/commit-por-etapas/SKILL.md`: Registro da skill solicitada pelo usuário para versionamento incremental documentado.
+
+---
+
+## [Commit 2] - Módulos de Corretores, Seguros com Coberturas e Autenticação Completa
+- **Data/Hora:** 2026-11-09 21:40
+- **Mensagem:** `feat: modulo de corretores, catalogo de seguros com coberturas e servico de autenticacao/registro`
+- **O que foi enviado para o Git:**
+  1. `features/corretores`:
+     - Entidade `Corretor` com chave estrangeira para `usuario` e registro profissional SUSEP.
+     - `CorretorRepository`: busca por status, registro profissional e vínculo com usuário.
+     - DTOs `CorretorRequest` e `CorretorResponse`.
+     - `CorretorService` e `CorretorController`: cadastro, atualização, listagem e alternância de status ativo/inativo.
+  2. `features/seguros`:
+     - Entidades `Seguro` e `Cobertura` com relacionamento 1:N.
+     - Repositórios `SeguroRepository` e `CoberturaRepository`.
+     - DTOs `SeguroRequest`, `SeguroResponse` e `CoberturaDto`.
+     - `SeguroService` e `SeguroController`: gestão de tipos de seguros, valor base, adição e remoção dinâmica de coberturas.
+  3. `features/auth`:
+     - `AuthService` e `AuthController`: endpoint `/auth/login` validando senha com BCrypt e emitindo token JWT, endpoint `/auth/register` para auto-cadastro do cliente e endpoint `/auth/me` para consulta do perfil conectado.
+     - DTOs `LoginResponse` e `RegisterRequest`.

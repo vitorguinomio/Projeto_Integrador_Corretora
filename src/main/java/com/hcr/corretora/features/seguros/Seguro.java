@@ -1,67 +1,44 @@
 package com.hcr.corretora.features.seguros;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import jakarta.persistence.*;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
-@Table(name = "seguros")
+@Table(name = "seguro")
 public class Seguro {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 150)
+    @Column(nullable = false, length = 100)
     private String nome;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "TEXT", nullable = false)
     private String descricao;
 
-    @Column(nullable = false, length = 50)
-    private String tipo;
+    @Column(columnDefinition = "TEXT")
+    private String caracteristicas;
 
-    @Column(name = "valor_base", nullable = false, precision = 12, scale = 2)
-    private BigDecimal valorBase;
+    @Column(name = "valor_base", precision = 10, scale = 2)
+    private BigDecimal valorBase = BigDecimal.ZERO;
 
-    @Column(nullable = false)
-    private Boolean ativo = true;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private OffsetDateTime createdAt;
-
-    @Column(name = "updated_at", nullable = false)
-    private OffsetDateTime updatedAt;
+    @OneToMany(mappedBy = "seguro", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<Cobertura> coberturas = new ArrayList<>();
 
     public Seguro() {}
 
-    public Seguro(Long id, String nome, String descricao, String tipo, BigDecimal valorBase, Boolean ativo) {
+    public Seguro(Long id, String nome, String descricao, String caracteristicas, BigDecimal valorBase) {
         this.id = id;
         this.nome = nome;
         this.descricao = descricao;
-        this.tipo = tipo;
-        this.valorBase = valorBase;
-        this.ativo = ativo != null ? ativo : true;
-    }
-
-    @PrePersist
-    public void prePersist() {
-        OffsetDateTime now = OffsetDateTime.now();
-        this.createdAt = now;
-        this.updatedAt = now;
-    }
-
-    @PreUpdate
-    public void preUpdate() {
-        this.updatedAt = OffsetDateTime.now();
+        this.caracteristicas = caracteristicas;
+        this.valorBase = valorBase != null ? valorBase : BigDecimal.ZERO;
     }
 
     public Long getId() {
@@ -88,12 +65,12 @@ public class Seguro {
         this.descricao = descricao;
     }
 
-    public String getTipo() {
-        return tipo;
+    public String getCaracteristicas() {
+        return caracteristicas;
     }
 
-    public void setTipo(String tipo) {
-        this.tipo = tipo;
+    public void setCaracteristicas(String caracteristicas) {
+        this.caracteristicas = caracteristicas;
     }
 
     public BigDecimal getValorBase() {
@@ -104,19 +81,16 @@ public class Seguro {
         this.valorBase = valorBase;
     }
 
-    public Boolean getAtivo() {
-        return ativo;
+    public List<Cobertura> getCoberturas() {
+        return coberturas;
     }
 
-    public void setAtivo(Boolean ativo) {
-        this.ativo = ativo;
+    public void setCoberturas(List<Cobertura> coberturas) {
+        this.coberturas = coberturas;
     }
 
-    public OffsetDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public OffsetDateTime getUpdatedAt() {
-        return updatedAt;
+    public void addCobertura(Cobertura cobertura) {
+        this.coberturas.add(cobertura);
+        cobertura.setSeguro(this);
     }
 }
