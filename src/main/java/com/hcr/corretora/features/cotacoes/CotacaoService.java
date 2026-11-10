@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
+@Transactional(readOnly = true)
 public class CotacaoService {
 
     private final CotacaoRepository cotacaoRepository;

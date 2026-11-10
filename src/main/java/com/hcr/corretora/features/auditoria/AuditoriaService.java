@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
+@Transactional(readOnly = true)
 public class AuditoriaService {
 
     private final LogAuditoriaRepository logAuditoriaRepository;

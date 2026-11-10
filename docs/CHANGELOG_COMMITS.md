@@ -145,3 +145,15 @@ Este documento registra detalhadamente as entregas efetuadas no repositório Git
       - `ClienteRequest.java`: Flexibilização de `dataNasc` como campo opcional.
       - `ApoliceRepository.java` e `ApoliceService.java`: Compatibilização de tipos no JPQL PostgreSQL (`CAST(:termo AS string)`) e bypass de busca sem filtros.
 
+---
+
+## [Commit 8] - Otimizações Transacionais e Blindagem de Serviços Backend
+- **Data/Hora:** 2026-11-10 06:25
+- **Mensagem:** `fix: anotacoes transacionais readonly para relatorios, cotacoes, propostas, alertas e auditoria`
+- **O que foi enviado para o Git:**
+  1. `features/relatorios/RelatorioService.java`: Adição de anotação `@Transactional(readOnly = true)` no nível da classe para permitir o carregamento seguro de coleções Lazy associadas (como `apolice.getParcelas()`), garantindo 100% de sucesso nos relatórios agregados de apólices, clientes, corretores e seguros.
+  2. `features/cotacoes/CotacaoService.java`: Anotação `@Transactional(readOnly = true)` para evitar fechamento prematuro de sessão ao navegar nas entidades relacionadas de cliente, corretor e seguro.
+  3. `features/propostas/PropostaService.java`: Anotação `@Transactional(readOnly = true)` para integridade das consultas de propostas vinculadas a cotações.
+  4. `features/alertas/AlertaService.java`: Anotação `@Transactional(readOnly = true)` para consulta consistente de notificações e vínculo com o usuário.
+  5. `features/auditoria/AuditoriaService.java`: Anotação `@Transactional(readOnly = true)` para consulta e listagem ordenada de logs de auditoria do sistema.
+

@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
+@Transactional(readOnly = true)
 public class AlertaService {
 
     private final NotificacaoAlertaRepository notificacaoAlertaRepository;

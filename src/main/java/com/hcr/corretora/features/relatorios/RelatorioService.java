@@ -14,12 +14,14 @@ import com.hcr.corretora.features.relatorios.dto.RelatorioSeguroItem;
 import com.hcr.corretora.features.seguros.Seguro;
 import com.hcr.corretora.features.seguros.SeguroRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
 @Service
+@Transactional(readOnly = true)
 public class RelatorioService {
 
     private final ClienteRepository clienteRepository;
