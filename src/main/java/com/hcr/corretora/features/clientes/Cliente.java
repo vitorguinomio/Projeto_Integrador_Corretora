@@ -1,66 +1,54 @@
 package com.hcr.corretora.features.clientes;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.hcr.corretora.features.usuarios.Usuario;
+import jakarta.persistence.*;
 
-import java.time.OffsetDateTime;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
-@Table(name = "clientes")
+@Table(name = "cliente")
 public class Cliente {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 150)
+    @Column(nullable = false, length = 100)
     private String nome;
 
-    @Column(name = "cpf_cnpj", nullable = false, unique = true, length = 20)
+    @Column(name = "cpf_cnpj", nullable = false, unique = true, length = 18)
     private String cpfCnpj;
 
-    @Column(length = 150)
+    @Column(name = "data_nasc", nullable = false)
+    private LocalDate dataNasc;
+
+    @Column(nullable = false, length = 100)
     private String email;
 
-    @Column(length = 20)
-    private String telefone;
+    @OneToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "fk_usuario_id", unique = true)
+    private Usuario usuario;
 
-    @Column(columnDefinition = "TEXT")
-    private String endereco;
+    @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<Endereco> enderecos = new ArrayList<>();
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private OffsetDateTime createdAt;
-
-    @Column(name = "updated_at", nullable = false)
-    private OffsetDateTime updatedAt;
+    @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<Telefone> telefones = new ArrayList<>();
 
     public Cliente() {}
 
-    public Cliente(Long id, String nome, String cpfCnpj, String email, String telefone, String endereco) {
+    public Cliente(Long id, String nome, String cpfCnpj, LocalDate dataNasc, String email, Usuario usuario) {
         this.id = id;
         this.nome = nome;
         this.cpfCnpj = cpfCnpj;
+        this.dataNasc = dataNasc;
         this.email = email;
-        this.telefone = telefone;
-        this.endereco = endereco;
-    }
-
-    @PrePersist
-    public void prePersist() {
-        OffsetDateTime now = OffsetDateTime.now();
-        this.createdAt = now;
-        this.updatedAt = now;
-    }
-
-    @PreUpdate
-    public void preUpdate() {
-        this.updatedAt = OffsetDateTime.now();
+        this.usuario = usuario;
     }
 
     public Long getId() {
@@ -87,6 +75,14 @@ public class Cliente {
         this.cpfCnpj = cpfCnpj;
     }
 
+    public LocalDate getDataNasc() {
+        return dataNasc;
+    }
+
+    public void setDataNasc(LocalDate dataNasc) {
+        this.dataNasc = dataNasc;
+    }
+
     public String getEmail() {
         return email;
     }
@@ -95,27 +91,37 @@ public class Cliente {
         this.email = email;
     }
 
-    public String getTelefone() {
-        return telefone;
+    public Usuario getUsuario() {
+        return usuario;
     }
 
-    public void setTelefone(String telefone) {
-        this.telefone = telefone;
+    public void setUsuario(Usuario usuario) {
+        this.usuario = usuario;
     }
 
-    public String getEndereco() {
-        return endereco;
+    public List<Endereco> getEnderecos() {
+        return enderecos;
     }
 
-    public void setEndereco(String endereco) {
-        this.endereco = endereco;
+    public void setEnderecos(List<Endereco> enderecos) {
+        this.enderecos = enderecos;
     }
 
-    public OffsetDateTime getCreatedAt() {
-        return createdAt;
+    public List<Telefone> getTelefones() {
+        return telefones;
     }
 
-    public OffsetDateTime getUpdatedAt() {
-        return updatedAt;
+    public void setTelefones(List<Telefone> telefones) {
+        this.telefones = telefones;
+    }
+
+    public void addEndereco(Endereco endereco) {
+        this.enderecos.add(endereco);
+        endereco.setCliente(this);
+    }
+
+    public void addTelefone(Telefone telefone) {
+        this.telefones.add(telefone);
+        telefone.setCliente(this);
     }
 }

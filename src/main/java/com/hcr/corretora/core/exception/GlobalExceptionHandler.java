@@ -1,7 +1,9 @@
 package com.hcr.corretora.core.exception;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -48,6 +50,40 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolationException(DataIntegrityViolationException ex) {
+        String msg = "Não é possível realizar a operação devido a vínculos de dados existentes ou violação de unicidade (RF04/RF31/RF34).";
+        if (ex.getRootCause() != null && ex.getRootCause().getMessage() != null) {
+            String rootMsg = ex.getRootCause().getMessage();
+            if (rootMsg.contains("violates unique constraint") || rootMsg.contains("unique")) {
+                msg = "Registro duplicado: já existe um registro com os identificadores informados (CPF, e-mail ou número de apólice).";
+            } else if (rootMsg.contains("violates foreign key constraint") || rootMsg.contains("foreign key")) {
+                msg = "Não é possível excluir ou alterar o registro pois ele possui outros registros vinculados no sistema.";
+            }
+        }
+
+        ErrorResponse response = new ErrorResponse(
+                Instant.now(),
+                HttpStatus.CONFLICT.value(),
+                "Data Integrity Violation",
+                msg
+        );
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDeniedException(AccessDeniedException ex) {
+        ErrorResponse response = new ErrorResponse(
+                Instant.now(),
+                HttpStatus.FORBIDDEN.value(),
+                "Access Denied",
+                "Acesso não autorizado para o perfil do usuário logado (RF08/RF29)."
+        );
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
     }
 
     @ExceptionHandler(Exception.class)
