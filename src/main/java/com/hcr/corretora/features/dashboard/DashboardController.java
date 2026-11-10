@@ -1,11 +1,10 @@
 package com.hcr.corretora.features.dashboard;
 
+import com.hcr.corretora.features.dashboard.dto.DashboardResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map;
 
 @RestController
 @RequestMapping("/dashboard")
@@ -18,8 +17,7 @@ public class DashboardController {
     }
 
     @GetMapping
-    public ResponseEntity<Map<String, Object>> obterMetricas() {
-        Map<String, Object> metricas = dashboardService.obterMetricasGerais();
-        return ResponseEntity.ok(metricas);
+    public ResponseEntity<DashboardResponse> obterMetricas() {
+        return ResponseEntity.ok(dashboardService.obterMetricasGerais());
     }
 }

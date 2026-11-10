@@ -71,3 +71,26 @@ Este documento registra detalhadamente as entregas efetuadas no repositório Git
      - `ApoliceService` e `ApoliceController`: emissão de apólice com geração automática de parcelas, renovação mantendo histórico anterior (RF22, EU16), cancelamento seguro sem deleção física (RF23, EU17), consulta de alertas de vencimento (RF27) e liquidação de parcelas (EU28).
   2. `features/clientes`:
      - Adição do endpoint `GET /clientes/{id}/historico` retornando histórico cronológico consolidado de seguros, cotações e apólices (RF24, EU18).
+
+---
+
+## [Commit 5] - Alertas, Auditoria, Dashboard, Relatórios Consolidados e Carga Inicial
+- **Data/Hora:** 2026-11-09 22:18
+- **Mensagem:** `feat: notificacoes, logs de auditoria, metricas dashboard, relatorios e carga inicial de dados`
+- **O que foi enviado para o Git:**
+  1. `features/alertas`:
+     - Entidade `NotificacaoAlerta` mapeando a tabela oficial `notificacao_alerta`.
+     - `NotificacaoAlertaRepository`, DTOs `NotificacaoResponse` e `CriarNotificacaoRequest`.
+     - `AlertaService` e `AlertaController`: consulta por usuário e marcação de status como lida (EU27).
+  2. `features/auditoria`:
+     - Entidade `LogAuditoria` mapeando a tabela oficial `log_auditoria` (RNF22).
+     - `LogAuditoriaRepository`, DTO `LogAuditoriaResponse`.
+     - `AuditoriaService` e `AuditoriaController`: registro automático e consulta de auditoria do sistema.
+  3. `features/dashboard`:
+     - `DashboardService` e `DashboardController`: cálculo em tempo real de KPIs (total de clientes, apólices ativas, vencidas, próximas do vencimento, cotações pendentes e faturamento).
+     - DTO `DashboardResponse`.
+  4. `features/relatorios`:
+     - `RelatorioService` e `RelatorioController`: consolidação analítica de clientes, corretores, seguros e apólices (RF35).
+     - DTOs `RelatorioClienteItem`, `RelatorioCorretorItem`, `RelatorioSeguroItem` e `RelatorioApoliceItem`.
+  5. `core/init/DataInitializer.java`:
+     - Inicializador de dados de demonstração com Administrador, Corretores, Clientes, Seguros, Coberturas, Cotações, Propostas, Apólices, Parcelas e Notificações pré-configurados.
