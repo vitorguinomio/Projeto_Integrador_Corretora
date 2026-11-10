@@ -39,3 +39,20 @@ Este documento registra detalhadamente as entregas efetuadas no repositório Git
   3. `features/auth`:
      - `AuthService` e `AuthController`: endpoint `/auth/login` validando senha com BCrypt e emitindo token JWT, endpoint `/auth/register` para auto-cadastro do cliente e endpoint `/auth/me` para consulta do perfil conectado.
      - DTOs `LoginResponse` e `RegisterRequest`.
+
+---
+
+## [Commit 3] - Processo Comercial: Solicitação de Cotações e Elaboração de Propostas
+- **Data/Hora:** 2026-11-09 21:45
+- **Mensagem:** `feat: fluxo completo de cotacoes e propostas com vinculos de cliente, corretor e seguro`
+- **O que foi enviado para o Git:**
+  1. `features/cotacoes`:
+     - Entidade `Cotacao` vinculando cliente, corretor (opcional na solicitação) e tipo de seguro.
+     - `CotacaoRepository`: filtros por cliente, corretor e situação.
+     - DTOs `CotacaoRequest` e `CotacaoResponse`.
+     - `CotacaoService` e `CotacaoController`: solicitação (EU05, EU11), alteração de situação e atribuição de corretor responsável.
+  2. `features/propostas`:
+     - Entidade `Proposta` com relação 1:1 obrigatória para a cotação.
+     - `PropostaRepository`: busca por cotação vinculada.
+     - DTOs `PropostaRequest` e `PropostaResponse`.
+     - `PropostaService` e `PropostaController`: elaboração de condições (EU12), aceite de proposta (EU08) e recusa.
