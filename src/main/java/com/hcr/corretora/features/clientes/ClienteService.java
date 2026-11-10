@@ -42,12 +42,14 @@ public class ClienteService {
         this.apoliceService = apoliceService;
     }
 
+    @Transactional(readOnly = true)
     public List<ClienteResponse> listarTodos() {
         return clienteRepository.findAll().stream()
                 .map(this::toResponse)
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public ClienteResponse buscarPorId(Long id) {
         Cliente cliente = buscarEntidadePorId(id);
         return toResponse(cliente);
@@ -111,7 +113,7 @@ public class ClienteService {
                         e.complemento(),
                         e.bairro(),
                         e.cidade(),
-                        e.estado().toUpperCase(),
+                        e.estado() != null ? e.estado().toUpperCase() : "DF",
                         cliente
                 );
                 cliente.addEndereco(endereco);
@@ -120,10 +122,21 @@ public class ClienteService {
 
         if (request.telefones() != null) {
             for (TelefoneDto t : request.telefones()) {
+                String ddd = t.ddd();
+                String num = t.numero() != null ? t.numero() : "";
+                if (ddd == null || ddd.isBlank()) {
+                    String clean = num.replaceAll("[^0-9]", "");
+                    if (clean.length() >= 10) {
+                        ddd = clean.substring(0, 2);
+                        num = clean.substring(2);
+                    } else {
+                        ddd = "61";
+                    }
+                }
                 Telefone tel = new Telefone(
                         null,
-                        t.ddd(),
-                        t.numero(),
+                        ddd,
+                        num,
                         t.tipo() != null ? t.tipo() : "CELULAR",
                         cliente
                 );
@@ -178,7 +191,7 @@ public class ClienteService {
                         e.complemento(),
                         e.bairro(),
                         e.cidade(),
-                        e.estado().toUpperCase(),
+                        e.estado() != null ? e.estado().toUpperCase() : "DF",
                         cliente
                 );
                 cliente.addEndereco(end);
@@ -189,10 +202,21 @@ public class ClienteService {
         cliente.getTelefones().clear();
         if (request.telefones() != null) {
             for (TelefoneDto t : request.telefones()) {
+                String ddd = t.ddd();
+                String num = t.numero() != null ? t.numero() : "";
+                if (ddd == null || ddd.isBlank()) {
+                    String clean = num.replaceAll("[^0-9]", "");
+                    if (clean.length() >= 10) {
+                        ddd = clean.substring(0, 2);
+                        num = clean.substring(2);
+                    } else {
+                        ddd = "61";
+                    }
+                }
                 Telefone tel = new Telefone(
                         null,
-                        t.ddd(),
-                        t.numero(),
+                        ddd,
+                        num,
                         t.tipo() != null ? t.tipo() : "CELULAR",
                         cliente
                 );

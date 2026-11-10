@@ -14,7 +14,6 @@ public record ClienteRequest(
         @NotBlank(message = "O CPF ou CNPJ é obrigatório")
         String cpfCnpj,
 
-        @NotNull(message = "A data de nascimento é obrigatória")
         LocalDate dataNasc,
 
         @NotBlank(message = "O e-mail é obrigatório")

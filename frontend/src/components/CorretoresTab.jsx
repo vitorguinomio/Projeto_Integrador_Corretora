@@ -1,184 +1,288 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import {
+  Briefcase,
+  Plus,
+  Mail,
+  Phone,
+  Shield,
+  Users,
+  Award,
+  CheckCircle2,
+  AlertCircle
+} from 'lucide-react';
+import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal } from './ui/UiBits';
 import { apiFetch } from '../api';
-import { styles } from '../styles';
 
-export default function CorretoresTab() {
+export const CorretoresTab = ({ currentUser, currentRole }) => {
   const [corretores, setCorretores] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [modalAberto, setModalAberto] = useState(false);
-  const [editando, setEditando] = useState(null);
-  const [feedback, setFeedback] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const [nome, setNome] = useState('');
-  const [dadosProfissionais, setDadosProfissionais] = useState('');
-  const [email, setEmail] = useState('');
-  const [senha, setSenha] = useState('');
-  const [status, setStatus] = useState('ATIVO');
+  // Modal
+  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [form, setForm] = useState({
+    nome: '',
+    registroSusep: '',
+    especialidade: 'Geral',
+    email: '',
+    telefone: '',
+    status: 'Ativo'
+  });
 
-  const carregarCorretores = async () => {
+  useEffect(() => {
+    loadCorretores();
+  }, []);
+
+  const loadCorretores = async () => {
     try {
       setLoading(true);
-      const data = await apiFetch('/corretores');
-      setCorretores(data);
+      const data = await apiFetch('/corretores').catch(() => []);
+      setCorretores(data || []);
     } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
+      console.error('Erro ao carregar corretores:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    carregarCorretores();
-  }, []);
-
-  const abrirNovo = () => {
-    setEditando(null);
-    setNome('');
-    setDadosProfissionais('SUSEP-');
-    setEmail('');
-    setSenha('corretor123');
-    setStatus('ATIVO');
-    setModalAberto(true);
-  };
-
-  const abrirEdicao = (c) => {
-    setEditando(c);
-    setNome(c.nome);
-    setDadosProfissionais(c.dadosProfissionais);
-    setEmail(c.email || '');
-    setSenha('');
-    setStatus(c.status);
-    setModalAberto(true);
-  };
-
-  const salvar = async (e) => {
+  const handleCreateSubmit = async (e) => {
     e.preventDefault();
-    setFeedback(null);
-    const payload = { nome, dadosProfissionais, email, senha: senha || undefined, status };
+    if (!form.nome || !form.registroSusep || !form.email) {
+      alert('Preencha os campos obrigatórios (*).');
+      return;
+    }
     try {
-      if (editando) {
-        await apiFetch(`/corretores/${editando.id}`, { method: 'PUT', body: JSON.stringify(payload) });
-        setFeedback({ tipo: 'sucesso', texto: 'Corretor atualizado com sucesso!' });
-      } else {
-        await apiFetch('/corretores', { method: 'POST', body: JSON.stringify(payload) });
-        setFeedback({ tipo: 'sucesso', texto: 'Corretor cadastrado com sucesso!' });
-      }
-      setModalAberto(false);
-      carregarCorretores();
+      const payload = {
+        nome: form.nome,
+        registroSusep: form.registroSusep,
+        especialidade: form.especialidade,
+        email: form.email,
+        telefone: form.telefone,
+        status: form.status
+      };
+
+      const novo = await apiFetch('/corretores', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      setCorretores([...corretores, novo]);
+      setIsNewModalOpen(false);
+      setForm({
+        nome: '',
+        registroSusep: '',
+        especialidade: 'Geral',
+        email: '',
+        telefone: '',
+        status: 'Ativo'
+      });
+      alert('Corretor cadastrado com sucesso!');
     } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
+      alert(`Erro ao cadastrar corretor: ${err.message}`);
     }
   };
 
-  const alternarStatus = async (c) => {
-    const novoStatus = c.status === 'ATIVO' ? 'INATIVO' : 'ATIVO';
-    try {
-      await apiFetch(`/corretores/${c.id}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: novoStatus })
-      });
-      setFeedback({ tipo: 'sucesso', texto: `Status do corretor ${c.nome} alterado para ${novoStatus}.` });
-      carregarCorretores();
-    } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
-    }
+  const getInitials = (nome = '') => {
+    return nome
+      .split(' ')
+      .slice(0, 2)
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase() || 'CR';
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h2 style={{ margin: 0 }}>Gestão de Corretores (RF05 - RF07, EU20, EU21)</h2>
-        <button style={styles.button('success')} onClick={abrirNovo}>+ Novo Corretor</button>
-      </div>
+    <div className="space-y-6 animate-rise">
+      {/* Header */}
+      <PageHeader
+        eyebrow="Equipe"
+        title="Corretores"
+        description="Profissionais vinculados à HCR, seus clientes atendidos e apólices sob responsabilidade."
+        actions={
+          <button
+            onClick={() => setIsNewModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="size-4" />
+            Novo corretor
+          </button>
+        }
+      />
 
-      {feedback && (
-        <div style={{
-          padding: '12px',
-          borderRadius: '6px',
-          marginBottom: '16px',
-          backgroundColor: feedback.tipo === 'erro' ? '#fee2e2' : '#dcfce7',
-          color: feedback.tipo === 'erro' ? '#b91c1c' : '#15803d'
-        }}>
-          {feedback.texto}
-        </div>
-      )}
-
-      <div style={styles.card}>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>ID</th>
-              <th style={styles.th}>Nome</th>
-              <th style={styles.th}>Registro SUSEP</th>
-              <th style={styles.th}>E-mail de Acesso</th>
-              <th style={styles.th}>Status</th>
-              <th style={styles.th}>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {corretores.map(c => (
-              <tr key={c.id}>
-                <td style={styles.td}>#{c.id}</td>
-                <td style={{ ...styles.td, fontWeight: '600' }}>{c.nome}</td>
-                <td style={styles.td}>{c.dadosProfissionais}</td>
-                <td style={styles.td}>{c.email || 'Sem login'}</td>
-                <td style={styles.td}><span style={styles.badge(c.status)}>{c.status}</span></td>
-                <td style={styles.td}>
-                  <button style={styles.button('warning')} onClick={() => abrirEdicao(c)}>Editar</button>
-                  <button
-                    style={styles.button(c.status === 'ATIVO' ? 'danger' : 'success')}
-                    onClick={() => alternarStatus(c)}
-                  >
-                    {c.status === 'ATIVO' ? 'Desativar' : 'Ativar'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {modalAberto && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
-            <h3>{editando ? `Editar Corretor #${editando.id}` : 'Novo Corretor (RF05)'}</h3>
-            <form onSubmit={salvar}>
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Nome do Profissional *</label>
-                <input style={styles.input} required value={nome} onChange={(e) => setNome(e.target.value)} />
+      {/* Grid de Cards de Corretores */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {corretores.map((c) => (
+          <div
+            key={c.id}
+            className="rounded-xl border border-border bg-card p-5 shadow-card space-y-4 hover:border-primary/40 transition-colors"
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex size-11 items-center justify-center rounded-full bg-accent text-accent-foreground font-display font-bold text-sm shrink-0">
+                  {getInitials(c.nome)}
+                </span>
+                <div>
+                  <h3 className="font-semibold text-foreground text-sm leading-tight">
+                    {c.nome}
+                  </h3>
+                  <span className="text-[0.7rem] text-muted-foreground font-mono">
+                    SUSEP {c.registroSusep}
+                  </span>
+                </div>
               </div>
+              <StatusBadge status={c.status || 'Ativo'} />
+            </div>
 
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Registro SUSEP / Matrícula Profissional *</label>
-                <input style={styles.input} required value={dadosProfissionais} onChange={(e) => setDadosProfissionais(e.target.value)} />
+            <div className="space-y-1.5 text-xs text-muted-foreground border-y border-border/60 py-3">
+              <div className="flex items-center gap-2">
+                <Award className="size-3.5 text-primary" />
+                <span>Especialidade: <strong className="text-foreground">{c.especialidade || 'Geral'}</strong></span>
               </div>
+              <div className="flex items-center gap-2">
+                <Mail className="size-3.5 text-primary" />
+                <span className="truncate">{c.email}</span>
+              </div>
+              {c.telefone && (
+                <div className="flex items-center gap-2">
+                  <Phone className="size-3.5 text-primary" />
+                  <span>{c.telefone}</span>
+                </div>
+              )}
+            </div>
 
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>E-mail de Acesso ao Sistema *</label>
-                <input type="email" style={styles.input} required value={email} onChange={(e) => setEmail(e.target.value)} />
+            <div className="grid grid-cols-2 gap-2 text-center text-xs">
+              <div className="rounded-lg bg-muted/40 p-2">
+                <span className="block font-display font-semibold text-lg text-foreground tabular">
+                  {c.totalClientes || 0}
+                </span>
+                <span className="text-[0.68rem] text-muted-foreground">
+                  Clientes atendidos
+                </span>
               </div>
-
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Senha de Acesso</label>
-                <input type="password" style={styles.input} placeholder={editando ? 'Deixe em branco para manter' : 'Senha inicial'} value={senha} onChange={(e) => setSenha(e.target.value)} />
+              <div className="rounded-lg bg-muted/40 p-2">
+                <span className="block font-display font-semibold text-lg text-foreground tabular">
+                  {c.totalApolices || 0}
+                </span>
+                <span className="text-[0.68rem] text-muted-foreground">
+                  Apólices ativas
+                </span>
               </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Status</label>
-                <select style={styles.input} value={status} onChange={(e) => setStatus(e.target.value)}>
-                  <option value="ATIVO">ATIVO</option>
-                  <option value="INATIVO">INATIVO</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button type="button" style={styles.button('secondary')} onClick={() => setModalAberto(false)}>Cancelar</button>
-                <button type="submit" style={styles.button('success')}>Salvar Corretor</button>
-              </div>
-            </form>
+            </div>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
+
+      {/* Modal Novo Corretor */}
+      <Modal
+        isOpen={isNewModalOpen}
+        onClose={() => setIsNewModalOpen(false)}
+        title="Novo corretor"
+        subtitle="Cadastre um corretor autorizado com registro SUSEP e dados de contato."
+      >
+        <form onSubmit={handleCreateSubmit} className="space-y-4">
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              Nome Completo *
+            </label>
+            <input
+              type="text"
+              required
+              value={form.nome}
+              onChange={(e) => setForm({ ...form, nome: e.target.value })}
+              placeholder="Ex: Rafael Guimarães"
+              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+                Registro SUSEP *
+              </label>
+              <input
+                type="text"
+                required
+                value={form.registroSusep}
+                onChange={(e) => setForm({ ...form, registroSusep: e.target.value })}
+                placeholder="Ex: 2024.998877"
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+                Especialidade
+              </label>
+              <input
+                type="text"
+                value={form.especialidade}
+                onChange={(e) => setForm({ ...form, especialidade: e.target.value })}
+                placeholder="Ex: Automóvel e Frotas"
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+                E-mail Corporativo *
+              </label>
+              <input
+                type="email"
+                required
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="corretor@hcrseguros.com.br"
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+                Telefone
+              </label>
+              <input
+                type="text"
+                value={form.telefone}
+                onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+                placeholder="(61) 98765-4321"
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              Status Operacional
+            </label>
+            <select
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value })}
+              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+            >
+              <option value="Ativo">Ativo</option>
+              <option value="Férias">Férias</option>
+              <option value="Inativo">Inativo</option>
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              type="button"
+              onClick={() => setIsNewModalOpen(false)}
+              className="px-4 py-2 text-sm rounded-md border border-input hover:bg-muted"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90"
+            >
+              Salvar corretor
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
-}
+};

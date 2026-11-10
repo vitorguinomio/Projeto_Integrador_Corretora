@@ -1,139 +1,173 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import {
+  History,
+  Search,
+  ShieldAlert,
+  Database,
+  User,
+  Globe,
+  Clock,
+  Filter
+} from 'lucide-react';
+import { PageHeader, StatusBadge, SectionCard, EmptyState, CodeText } from './ui/UiBits';
 import { apiFetch } from '../api';
-import { styles } from '../styles';
 
-export default function AuditoriaTab() {
-  const [usuarios, setUsuarios] = useState([]);
+export default function AuditoriaTab({ currentUser, currentRole }) {
   const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [feedback, setFeedback] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [tabelaFilter, setTabelaFilter] = useState('');
+  const [search, setSearch] = useState('');
 
-  const carregar = async () => {
+  useEffect(() => {
+    loadLogs();
+  }, [tabelaFilter]);
+
+  const loadLogs = async () => {
     try {
       setLoading(true);
-      const [u, l] = await Promise.all([
-        apiFetch('/usuarios'),
-        apiFetch('/auditoria')
-      ]);
-      setUsuarios(u);
-      setLogs(l);
+      const url = tabelaFilter ? `/auditoria?tabela=${tabelaFilter}` : '/auditoria';
+      const data = await apiFetch(url).catch(() => []);
+      setLogs(data || []);
     } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
+      console.error('Erro ao carregar logs de auditoria:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    carregar();
-  }, []);
-
-  const alternarStatusUsuario = async (u) => {
-    const novoStatus = u.status === 'ATIVO' ? 'INATIVO' : 'ATIVO';
-    try {
-      await apiFetch(`/usuarios/${u.id}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: novoStatus })
-      });
-      setFeedback({ tipo: 'sucesso', texto: `Status de ${u.loginEmail} alterado para ${novoStatus}.` });
-      carregar();
-    } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
+  const getAcaoBadge = (acao = '') => {
+    switch (acao.toUpperCase()) {
+      case 'CREATE':
+      case 'CRIAR':
+      case 'INSERCAO':
+        return 'bg-success-soft text-success border border-success/30';
+      case 'UPDATE':
+      case 'ATUALIZAR':
+      case 'RENOVAR':
+      case 'PAGAR':
+        return 'bg-signal-soft text-signal-foreground border border-signal/30';
+      case 'DELETE':
+      case 'EXCLUIR':
+      case 'CANCELAR':
+        return 'bg-danger-soft text-danger border border-danger/30';
+      default:
+        return 'bg-muted text-muted-foreground border border-border';
     }
   };
 
+  const filteredLogs = logs.filter((log) => {
+    const term = search.toLowerCase();
+    const email = log.usuarioEmail || '';
+    const tabela = log.nomeTabela || log.tabelaAfetada || '';
+    const acao = log.acao || log.acaoRealizada || '';
+    const ip = log.ipOrigem || '';
+    const detalhes = log.detalhes || '';
+    return (
+      email.toLowerCase().includes(term) ||
+      tabela.toLowerCase().includes(term) ||
+      acao.toLowerCase().includes(term) ||
+      ip.includes(term) ||
+      detalhes.toLowerCase().includes(term)
+    );
+  });
+
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h2 style={{ margin: 0 }}>Gerenciamento de Usuários & Auditoria (RF28, RF29, RNF22)</h2>
-        <button style={styles.button('primary')} onClick={carregar}>Atualizar Dados</button>
-      </div>
+    <div className="space-y-6 animate-rise">
+      {/* Header */}
+      <PageHeader
+        eyebrow="Segurança"
+        title="Auditoria"
+        description="Cada cadastro, alteração e exclusão fica registrado com usuário, data e origem."
+      />
 
-      {feedback && (
-        <div style={{ padding: '12px', borderRadius: '6px', marginBottom: '16px', backgroundColor: feedback.tipo === 'erro' ? '#fee2e2' : '#dcfce7', color: feedback.tipo === 'erro' ? '#b91c1c' : '#15803d' }}>
-          {feedback.texto}
-        </div>
-      )}
-
-      {/* Tabela de Usuários */}
-      <div style={styles.card}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-          <span style={{ fontSize: '20px' }}>👤</span>
-          <h3 style={{ margin: 0 }}>Contas de Usuários do Sistema (RF28 / RF29)</h3>
-        </div>
-
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>ID</th>
-              <th style={styles.th}>E-mail de Login</th>
-              <th style={styles.th}>Perfil de Acesso</th>
-              <th style={styles.th}>Status</th>
-              <th style={styles.th}>Controle</th>
-            </tr>
-          </thead>
-          <tbody>
-            {usuarios.map(u => (
-              <tr key={u.id}>
-                <td style={styles.td}>#{u.id}</td>
-                <td style={{ ...styles.td, fontWeight: 'bold' }}>{u.loginEmail}</td>
-                <td style={styles.td}>
-                  <span style={styles.badge(u.perfilAcesso)}>{u.perfilAcesso}</span>
-                </td>
-                <td style={styles.td}>
-                  <span style={styles.badge(u.status)}>{u.status}</span>
-                </td>
-                <td style={styles.td}>
-                  <button
-                    style={styles.button(u.status === 'ATIVO' ? 'danger' : 'success')}
-                    onClick={() => alternarStatusUsuario(u)}
-                  >
-                    {u.status === 'ATIVO' ? 'Desativar' : 'Reativar'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Logs de Auditoria */}
-      <div style={styles.card}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-          <span style={{ fontSize: '20px' }}>📜</span>
-          <h3 style={{ margin: 0 }}>Trilha de Auditoria do Sistema (Tabela log_auditoria - RNF22)</h3>
+      {/* Filtros */}
+      <div className="flex flex-col md:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Pesquise por usuário, ação, tabela ou IP..."
+            className="h-10 w-full rounded-md border border-input bg-card pl-9 pr-4 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          />
         </div>
 
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>Data/Hora</th>
-              <th style={styles.th}>Ação Realizada</th>
-              <th style={styles.th}>Tabela Afetada</th>
-              <th style={styles.th}>IP de Origem</th>
-              <th style={styles.th}>Usuário Responsável</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.map(l => (
-              <tr key={l.id}>
-                <td style={styles.td}>{l.dataHora?.replace('T', ' ').substring(0, 19)}</td>
-                <td style={{ ...styles.td, fontWeight: '500' }}>{l.acaoRealizada}</td>
-                <td style={styles.td}><code>{l.tabelaAfetada}</code></td>
-                <td style={styles.td}>{l.ipOrigem || '127.0.0.1'}</td>
-                <td style={styles.td}>{l.usuarioEmail}</td>
-              </tr>
-            ))}
-            {logs.length === 0 && (
-              <tr>
-                <td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>
-                  Nenhum log registrado ainda.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <select
+          value={tabelaFilter}
+          onChange={(e) => setTabelaFilter(e.target.value)}
+          className="h-10 rounded-md border border-input bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="">Todas as tabelas</option>
+          <option value="apolice">apolice</option>
+          <option value="cliente">cliente</option>
+          <option value="cotacao">cotacao</option>
+          <option value="proposta">proposta</option>
+          <option value="usuario">usuario</option>
+          <option value="corretor">corretor</option>
+          <option value="seguro">seguro</option>
+        </select>
       </div>
+
+      {/* Tabela de Logs */}
+      <SectionCard title="Trilha de Auditoria (Audit Trail)">
+        {filteredLogs.length === 0 ? (
+          <EmptyState
+            title="Nenhum registro de auditoria"
+            text="Nenhuma ação correspondente aos filtros foi encontrada."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="px-5 py-3.5">Data e hora</th>
+                  <th className="px-5 py-3.5">Ação</th>
+                  <th className="px-5 py-3.5">Tabela</th>
+                  <th className="px-5 py-3.5">Usuário</th>
+                  <th className="px-5 py-3.5">IP de origem</th>
+                  <th className="px-5 py-3.5">Detalhes da Operação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60 font-mono text-xs">
+                {filteredLogs.map((log) => {
+                  const acaoText = log.acao || log.acaoRealizada || 'OPERACAO';
+                  const tabText = log.nomeTabela || log.tabelaAfetada || 'sistema';
+                  return (
+                    <tr key={log.id} className="hover:bg-accent/40 transition-colors">
+                      <td className="px-5 py-3.5 text-muted-foreground whitespace-nowrap">
+                        {log.dataHora ? log.dataHora.replace('T', ' ').substring(0, 19) : '—'}
+                      </td>
+
+                      <td className="px-5 py-3.5">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[0.7rem] font-bold ${getAcaoBadge(acaoText)}`}>
+                          {acaoText}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-3.5 font-semibold text-foreground">
+                        {tabText}
+                      </td>
+
+                      <td className="px-5 py-3.5 text-foreground">
+                        {log.usuarioEmail || 'sistema@hcr.com'}
+                      </td>
+
+                      <td className="px-5 py-3.5 text-muted-foreground">
+                        {log.ipOrigem || '127.0.0.1'}
+                      </td>
+
+                      <td className="px-5 py-3.5 text-muted-foreground font-sans text-xs max-w-xs truncate" title={log.detalhes}>
+                        {log.detalhes || `Registro ID #${log.registroId || log.id}`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
     </div>
   );
 }

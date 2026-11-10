@@ -21,8 +21,9 @@ public class SeguroService {
         this.coberturaRepository = coberturaRepository;
     }
 
+    @Transactional(readOnly = true)
     public List<SeguroResponse> listarTodos() {
-        return seguroRepository.findAll().stream()
+        return seguroRepository.findAllWithCoberturas().stream()
                 .map(this::toResponse)
                 .toList();
     }

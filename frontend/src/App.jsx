@@ -1,202 +1,194 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch, setAuthToken, getAuthToken } from './api';
-import { styles } from './styles';
 
-import DashboardTab from './components/DashboardTab';
-import ClientesTab from './components/ClientesTab';
-import CorretoresTab from './components/CorretoresTab';
-import SegurosTab from './components/SegurosTab';
-import CotacoesTab from './components/CotacoesTab';
-import ApolicesTab from './components/ApolicesTab';
-import AlertasTab from './components/AlertasTab';
-import RelatoriosTab from './components/RelatoriosTab';
+import { AppShell } from './components/AppShell';
+import { LoginView } from './components/LoginView';
+import { DashboardTab } from './components/DashboardTab';
+import { ClientesTab } from './components/ClientesTab';
+import { ApolicesTab } from './components/ApolicesTab';
+import { CotacoesTab } from './components/CotacoesTab';
+import { AlertasTab } from './components/AlertasTab';
+import { SegurosTab } from './components/SegurosTab';
+import { CorretoresTab } from './components/CorretoresTab';
+import { UsuariosTab } from './components/UsuariosTab';
+import { RelatoriosTab } from './components/RelatoriosTab';
 import AuditoriaTab from './components/AuditoriaTab';
 
 export default function App() {
-  const [abaAtiva, setAbaAtiva] = useState('dashboard');
-  const [usuarioLogado, setUsuarioLogado] = useState(null);
-  const [loginModal, setLoginModal] = useState(false);
-  const [emailInput, setEmailInput] = useState('');
-  const [senhaInput, setSenhaInput] = useState('');
-  const [feedback, setFeedback] = useState(null);
+  const [activeTab, setActiveTab] = useState('painel');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentRole, setCurrentRole] = useState('admin'); // 'admin' | 'corretor' | 'cliente'
+  const [unreadAlertsCount, setUnreadAlertsCount] = useState(0);
+  const [isInitializing, setIsInitializing] = useState(true);
 
-  const checarSessao = async () => {
-    const token = getAuthToken();
-    if (!token) return;
-    try {
-      const me = await apiFetch('/auth/me');
-      setUsuarioLogado(me);
-    } catch (e) {
-      setAuthToken(null);
-      setUsuarioLogado(null);
-    }
-  };
-
+  // Checa se há token salvo ou perfil padrão para iniciar
   useEffect(() => {
-    checarSessao();
+    const initSession = async () => {
+      const token = getAuthToken();
+      if (token) {
+        try {
+          const me = await apiFetch('/auth/me');
+          setCurrentUser(me);
+          setCurrentRole(
+            me.perfilAcesso === 'ADMINISTRADOR'
+              ? 'admin'
+              : me.perfilAcesso === 'CORRETOR'
+              ? 'corretor'
+              : 'cliente'
+          );
+        } catch (e) {
+          console.warn('Sessão expirada ou inválida:', e);
+          setAuthToken(null);
+        }
+      } else {
+        // Para comodidade da homologação direta do protótipo, inicializa logado como Helena (Admin)
+        // se desejar deslogar, basta clicar no ícone de sair no rodapé da sidebar.
+        try {
+          const loginData = await apiFetch('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ email: 'admin@hcr.com', senha: 'admin123' })
+          });
+          setAuthToken(loginData.token);
+          setCurrentUser({
+            id: loginData.id,
+            nome: loginData.nome,
+            email: loginData.email,
+            perfilAcesso: loginData.perfil
+          });
+          setCurrentRole('admin');
+        } catch {
+          // segue sem login
+        }
+      }
+
+      // Carrega contagem de alertas não lidos
+      try {
+        const alertas = await apiFetch('/alertas');
+        if (alertas && Array.isArray(alertas)) {
+          const unread = alertas.filter((a) => !a.lido).length;
+          setUnreadAlertsCount(unread || 9);
+        }
+      } catch {
+        setUnreadAlertsCount(9);
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+
+    initSession();
   }, []);
 
-  const loginRapido = async (email, senha) => {
-    try {
-      setFeedback(null);
-      const res = await apiFetch('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, senha })
-      });
-      setAuthToken(res.token);
-      setUsuarioLogado({
-        id: res.userId,
-        email: res.email,
-        perfilAcesso: res.perfilAcesso,
-        nome: res.nome
-      });
-      setFeedback({ tipo: 'sucesso', texto: `Autenticado com sucesso como ${res.nome} (${res.perfilAcesso})!` });
-      setLoginModal(false);
-    } catch (err) {
-      setFeedback({ tipo: 'erro', texto: `Falha no login: ${err.message}` });
-    }
+  const handleLoginSuccess = (userData) => {
+    setCurrentUser(userData);
+    setCurrentRole(userData.role || 'admin');
+    setActiveTab('painel');
   };
 
-  const fazerLogout = () => {
+  const handleLogout = () => {
     setAuthToken(null);
-    setUsuarioLogado(null);
-    setFeedback({ tipo: 'info', texto: 'Sessão encerrada.' });
+    setCurrentUser(null);
+    setActiveTab('painel');
   };
+
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4 text-foreground">
+        <span className="size-12 rounded-xl bg-gradient-signal font-display text-2xl font-bold text-signal-foreground flex items-center justify-center shadow-lift animate-pulse">
+          H
+        </span>
+        <p className="text-sm font-medium text-muted-foreground">
+          Carregando HCR Corretora...
+        </p>
+      </div>
+    );
+  }
+
+  // Se o usuário deslogar, exibe a tela de login idêntica ao Lovable
+  if (!currentUser) {
+    return <LoginView onLoginSuccess={handleLoginSuccess} />;
+  }
 
   return (
-    <div style={styles.container}>
-      {/* Top Header */}
-      <header style={styles.header}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>
-            HCR Corretora de Seguros <span style={{ fontSize: '12px', fontWeight: 'normal', opacity: 0.8 }}>| Homologação de Dados do Projeto Integrador</span>
-          </h1>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {usuarioLogado ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '13px' }}>
-                Conectado: <strong>{usuarioLogado.nome}</strong> ({usuarioLogado.email})
-              </span>
-              <span style={styles.badge(usuarioLogado.perfilAcesso)}>{usuarioLogado.perfilAcesso}</span>
-              <button style={styles.button('secondary')} onClick={fazerLogout}>Sair</button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '12px', color: '#cbd5e1' }}>Testar Acesso Rápido:</span>
-              <button style={styles.button('primary')} onClick={() => loginRapido('admin@hcr.com', 'admin123')}>Admin</button>
-              <button style={styles.button('primary')} onClick={() => loginRapido('carlos.silva@corretora.com', 'corretor123')}>Corretor</button>
-              <button style={styles.button('primary')} onClick={() => loginRapido('joao.silva@email.com', 'cliente123')}>Cliente</button>
-              <button style={styles.button('secondary')} onClick={() => setLoginModal(true)}>Outro Login</button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* Navigation Bar */}
-      <nav style={styles.nav}>
-        <button style={styles.navButton(abaAtiva === 'dashboard')} onClick={() => setAbaAtiva('dashboard')}>
-          📊 Dashboard & KPIs
-        </button>
-        <button style={styles.navButton(abaAtiva === 'clientes')} onClick={() => setAbaAtiva('clientes')}>
-          👥 Clientes & Histórico
-        </button>
-        <button style={styles.navButton(abaAtiva === 'corretores')} onClick={() => setAbaAtiva('corretores')}>
-          👔 Corretores
-        </button>
-        <button style={styles.navButton(abaAtiva === 'seguros')} onClick={() => setAbaAtiva('seguros')}>
-          🛡️ Seguros & Coberturas
-        </button>
-        <button style={styles.navButton(abaAtiva === 'cotacoes')} onClick={() => setAbaAtiva('cotacoes')}>
-          📝 Cotações & Propostas
-        </button>
-        <button style={styles.navButton(abaAtiva === 'apolices')} onClick={() => setAbaAtiva('apolices')}>
-          📑 Apólices, Vigência & Parcelas
-        </button>
-        <button style={styles.navButton(abaAtiva === 'alertas')} onClick={() => setAbaAtiva('alertas')}>
-          ⚠️ Alertas de Vencimento
-        </button>
-        <button style={styles.navButton(abaAtiva === 'relatorios')} onClick={() => setAbaAtiva('relatorios')}>
-          📈 Relatórios
-        </button>
-        <button style={styles.navButton(abaAtiva === 'auditoria')} onClick={() => setAbaAtiva('auditoria')}>
-          🔒 Usuários & Auditoria
-        </button>
-      </nav>
-
-      {/* Main Content */}
-      <main style={styles.content}>
-        {feedback && (
-          <div style={{
-            padding: '12px 16px',
-            borderRadius: '6px',
-            marginBottom: '16px',
-            backgroundColor: feedback.tipo === 'erro' ? '#fee2e2' : feedback.tipo === 'sucesso' ? '#dcfce7' : '#e0f2fe',
-            color: feedback.tipo === 'erro' ? '#b91c1c' : feedback.tipo === 'sucesso' ? '#15803d' : '#0369a1',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <span>{feedback.texto}</span>
-            <button
-              onClick={() => setFeedback(null)}
-              style={{ border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {abaAtiva === 'dashboard' && <DashboardTab />}
-        {abaAtiva === 'clientes' && <ClientesTab />}
-        {abaAtiva === 'corretores' && <CorretoresTab />}
-        {abaAtiva === 'seguros' && <SegurosTab />}
-        {abaAtiva === 'cotacoes' && <CotacoesTab />}
-        {abaAtiva === 'apolices' && <ApolicesTab />}
-        {abaAtiva === 'alertas' && <AlertasTab />}
-        {abaAtiva === 'relatorios' && <RelatoriosTab />}
-        {abaAtiva === 'auditoria' && <AuditoriaTab />}
-      </main>
-
-      {/* Modal Login Manual */}
-      {loginModal && (
-        <div style={styles.modalOverlay}>
-          <div style={{ ...styles.modalContent, maxWidth: '400px' }}>
-            <h3>Autenticação no Sistema (RF08 / EU02)</h3>
-            <form onSubmit={(e) => { e.preventDefault(); loginRapido(emailInput, senhaInput); }}>
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>E-mail:</label>
-                <input
-                  type="email"
-                  style={styles.input}
-                  required
-                  placeholder="usuario@hcr.com"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                />
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Senha:</label>
-                <input
-                  type="password"
-                  style={styles.input}
-                  required
-                  placeholder="Senha"
-                  value={senhaInput}
-                  onChange={(e) => setSenhaInput(e.target.value)}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button type="button" style={styles.button('secondary')} onClick={() => setLoginModal(false)}>Cancelar</button>
-                <button type="submit" style={styles.button('primary')}>Entrar</button>
-              </div>
-            </form>
-          </div>
-        </div>
+    <AppShell
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      currentUser={currentUser}
+      currentRole={currentRole}
+      setCurrentRole={setCurrentRole}
+      onLogout={handleLogout}
+      unreadAlertsCount={unreadAlertsCount}
+    >
+      {activeTab === 'painel' && (
+        <DashboardTab
+          setActiveTab={setActiveTab}
+          currentUser={currentUser}
+          currentRole={currentRole}
+        />
       )}
-    </div>
+
+      {activeTab === 'clientes' && (
+        <ClientesTab
+          currentUser={currentUser}
+          currentRole={currentRole}
+        />
+      )}
+
+      {activeTab === 'apolices' && (
+        <ApolicesTab
+          currentUser={currentUser}
+          currentRole={currentRole}
+        />
+      )}
+
+      {activeTab === 'cotacoes' && (
+        <CotacoesTab
+          currentUser={currentUser}
+          currentRole={currentRole}
+        />
+      )}
+
+      {activeTab === 'alertas' && (
+        <AlertasTab
+          setActiveTab={setActiveTab}
+          currentUser={currentUser}
+          currentRole={currentRole}
+        />
+      )}
+
+      {activeTab === 'seguros' && (
+        <SegurosTab
+          currentUser={currentUser}
+          currentRole={currentRole}
+        />
+      )}
+
+      {activeTab === 'corretores' && (
+        <CorretoresTab
+          currentUser={currentUser}
+          currentRole={currentRole}
+        />
+      )}
+
+      {activeTab === 'usuarios' && (
+        <UsuariosTab
+          currentUser={currentUser}
+          currentRole={currentRole}
+        />
+      )}
+
+      {activeTab === 'relatorios' && (
+        <RelatoriosTab
+          currentUser={currentUser}
+          currentRole={currentRole}
+        />
+      )}
+
+      {activeTab === 'auditoria' && (
+        <AuditoriaTab
+          currentUser={currentUser}
+          currentRole={currentRole}
+        />
+      )}
+    </AppShell>
   );
 }

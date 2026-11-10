@@ -23,8 +23,8 @@ public interface ApoliceRepository extends JpaRepository<Apolice, Long> {
     long countBySituacao(String situacao);
 
     @Query("SELECT a FROM Apolice a WHERE " +
-            "(:termo IS NULL OR LOWER(a.numeroApolice) LIKE LOWER(CONCAT('%', :termo, '%')) OR LOWER(a.cliente.nome) LIKE LOWER(CONCAT('%', :termo, '%'))) AND " +
-            "(:situacao IS NULL OR a.situacao = :situacao) AND " +
+            "(CAST(:termo AS string) IS NULL OR LOWER(a.numeroApolice) LIKE LOWER(CONCAT('%', CAST(:termo AS string), '%')) OR LOWER(a.cliente.nome) LIKE LOWER(CONCAT('%', CAST(:termo AS string), '%'))) AND " +
+            "(CAST(:situacao AS string) IS NULL OR a.situacao = CAST(:situacao AS string)) AND " +
             "(:clienteId IS NULL OR a.cliente.id = :clienteId) AND " +
             "(:corretorId IS NULL OR a.corretor.id = :corretorId)")
     List<Apolice> pesquisar(

@@ -1,339 +1,445 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import {
+  FileCheck,
+  Plus,
+  Send,
+  CheckCircle2,
+  XCircle,
+  FileText,
+  Clock,
+  User,
+  Shield,
+  AlertCircle
+} from 'lucide-react';
+import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal } from './ui/UiBits';
 import { apiFetch } from '../api';
-import { styles } from '../styles';
 
-export default function CotacoesTab() {
+export const CotacoesTab = ({ currentUser, currentRole }) => {
   const [cotacoes, setCotacoes] = useState([]);
   const [clientes, setClientes] = useState([]);
-  const [corretores, setCorretores] = useState([]);
   const [seguros, setSeguros] = useState([]);
-  const [filtroSituacao, setFiltroSituacao] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [modalCotacao, setModalCotacao] = useState(false);
-  const [modalProposta, setModalProposta] = useState(null); // cotacao selecionada para criar proposta
-  const [visualizarProposta, setVisualizarProposta] = useState(null); // proposta selecionada para visualizacao
-  const [feedback, setFeedback] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // Form Cotação
-  const [clienteId, setClienteId] = useState('');
-  const [corretorId, setCorretorId] = useState('');
-  const [seguroId, setSeguroId] = useState('');
-  const [valor, setValor] = useState('');
+  // Modais
+  const [isNewCotacaoOpen, setIsNewCotacaoOpen] = useState(false);
+  const [isNewPropostaOpen, setIsNewPropostaOpen] = useState(false);
+  const [selectedCotacao, setSelectedCotacao] = useState(null);
 
-  // Form Proposta
-  const [condicoes, setCondicoes] = useState('');
+  // Form Nova Cotação
+  const [cotacaoForm, setCotacaoForm] = useState({
+    clienteId: '',
+    seguroId: '',
+    informacoesAdicionais: ''
+  });
 
-  const carregarDados = async () => {
+  // Form Nova Proposta
+  const [propostaForm, setPropostaForm] = useState({
+    premio: '',
+    condicoes: 'Cobertura compreensiva 100% tabela FIPE com assistência 24h e carro reserva por 15 dias.'
+  });
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
     try {
       setLoading(true);
-      const urlCotacoes = filtroSituacao ? `/cotacoes?situacao=${filtroSituacao}` : '/cotacoes';
-      const [cots, cls, cors, segs] = await Promise.all([
-        apiFetch(urlCotacoes),
-        apiFetch('/clientes'),
-        apiFetch('/corretores'),
-        apiFetch('/seguros')
+      const [cotacoesData, clientesData, segurosData] = await Promise.all([
+        apiFetch('/cotacoes').catch(() => []),
+        apiFetch('/clientes').catch(() => []),
+        apiFetch('/seguros').catch(() => [])
       ]);
-      setCotacoes(cots);
-      setClientes(cls);
-      setCorretores(cors);
-      setSeguros(segs);
-      if (cls.length > 0 && !clienteId) setClienteId(cls[0].id);
-      if (segs.length > 0 && !seguroId) setSeguroId(segs[0].id);
+      setCotacoes(cotacoesData || []);
+      setClientes(clientesData || []);
+      setSeguros(segurosData || []);
+
+      if (clientesData?.length && segurosData?.length) {
+        setCotacaoForm({
+          clienteId: clientesData[0].id,
+          seguroId: segurosData[0].id,
+          informacoesAdicionais: ''
+        });
+      }
     } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
+      console.error('Erro ao carregar cotações:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    carregarDados();
-  }, [filtroSituacao]);
-
-  const abrirNovaCotacao = () => {
-    if (clientes.length > 0) setClienteId(clientes[0].id);
-    if (seguros.length > 0) {
-      setSeguroId(seguros[0].id);
-      setValor(seguros[0].valorBase || '1000.00');
-    }
-    setCorretorId(corretores.length > 0 ? corretores[0].id : '');
-    setModalCotacao(true);
-  };
-
-  const salvarCotacao = async (e) => {
+  const handleCreateCotacao = async (e) => {
     e.preventDefault();
+    if (!cotacaoForm.clienteId || !cotacaoForm.seguroId) {
+      alert('Selecione cliente e seguro.');
+      return;
+    }
     try {
-      await apiFetch('/cotacoes', {
+      const payload = {
+        clienteId: Number(cotacaoForm.clienteId),
+        seguroId: Number(cotacaoForm.seguroId),
+        informacoesAdicionais: cotacaoForm.informacoesAdicionais || 'Solicitação de cotação padrão.'
+      };
+
+      const nova = await apiFetch('/cotacoes', {
         method: 'POST',
-        body: JSON.stringify({
-          clienteId: Number(clienteId),
-          corretorId: corretorId ? Number(corretorId) : undefined,
-          seguroId: Number(seguroId),
-          valor: Number(valor),
-          situacao: 'SOLICITADA'
-        })
+        body: JSON.stringify(payload)
       });
-      setFeedback({ tipo: 'sucesso', texto: 'Cotação solicitada com sucesso!' });
-      setModalCotacao(false);
-      carregarDados();
+
+      setCotacoes([nova, ...cotacoes]);
+      setIsNewCotacaoOpen(false);
+      setCotacaoForm((prev) => ({ ...prev, informacoesAdicionais: '' }));
+      alert('Cotação registrada com sucesso!');
     } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
+      alert(`Erro ao registrar cotação: ${err.message}`);
     }
   };
 
-  const abrirGerarProposta = (c) => {
-    setModalProposta(c);
-    setCondicoes(`Proposta comercial para o seguro ${c.seguroNome}. Franquia de R$ 1.200,00, assistência 24 horas completa, pagamento em até 12x.`);
+  const handleOpenElaborarProposta = (cotacao) => {
+    setSelectedCotacao(cotacao);
+    const seg = seguros.find((s) => s.nome === cotacao.seguroNome);
+    setPropostaForm({
+      premio: seg?.premioBase || 2500,
+      condicoes: 'Cobertura total e assistência 24h com franquia reduzida.'
+    });
+    setIsNewPropostaOpen(true);
   };
 
-  const salvarProposta = async (e) => {
+  const handleCreateProposta = async (e) => {
     e.preventDefault();
+    if (!propostaForm.premio) {
+      alert('Informe o valor do prêmio.');
+      return;
+    }
     try {
-      await apiFetch('/propostas', {
+      const payload = {
+        cotacaoId: selectedCotacao.id,
+        premio: Number(propostaForm.premio),
+        condicoes: propostaForm.condicoes
+      };
+
+      const novaProp = await apiFetch('/propostas', {
         method: 'POST',
-        body: JSON.stringify({
-          cotacaoId: modalProposta.id,
-          condicoes,
-          situacao: 'PENDENTE'
-        })
+        body: JSON.stringify(payload)
       });
-      setFeedback({ tipo: 'sucesso', texto: 'Proposta elaborada e enviada ao cliente com sucesso!' });
-      setModalProposta(null);
-      carregarDados();
+
+      // Atualiza na cotação
+      const updated = cotacoes.map((c) =>
+        c.id === selectedCotacao.id
+          ? { ...c, situacao: 'Em análise', propostas: [...(c.propostas || []), novaProp] }
+          : c
+      );
+      setCotacoes(updated);
+      setIsNewPropostaOpen(false);
+      alert('Proposta elaborada e enviada para o cliente!');
     } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
+      alert(`Erro ao criar proposta: ${err.message}`);
     }
   };
 
-  const verProposta = async (cotacaoId) => {
+  const handleResponderProposta = async (propostaId, aceita) => {
     try {
-      const prop = await apiFetch(`/propostas/cotacao/${cotacaoId}`);
-      setVisualizarProposta(prop);
+      const endpoint = aceita ? `/propostas/${propostaId}/aceitar` : `/propostas/${propostaId}/recusar`;
+      await apiFetch(endpoint, {
+        method: 'POST'
+      });
+      alert(
+        aceita
+          ? 'Proposta ACEITA! A apólice e suas parcelas foram geradas automaticamente no sistema.'
+          : 'Proposta recusada pelo cliente.'
+      );
+      loadData();
     } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
+      alert(`Erro ao responder proposta: ${err.message}`);
     }
   };
 
-  const aceitarProposta = async (propostaId) => {
-    try {
-      await apiFetch(`/propostas/${propostaId}/aceitar`, { method: 'POST' });
-      setFeedback({ tipo: 'sucesso', texto: 'Proposta aceita! Cotação aprovada para contratação de apólice (EU08).' });
-      setVisualizarProposta(null);
-      carregarDados();
-    } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
-    }
-  };
-
-  const recusarProposta = async (propostaId) => {
-    try {
-      await apiFetch(`/propostas/${propostaId}/recusar`, { method: 'POST' });
-      setFeedback({ tipo: 'sucesso', texto: 'Proposta recusada.' });
-      setVisualizarProposta(null);
-      carregarDados();
-    } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
-    }
+  const formatCurrency = (val) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(val || 0);
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h2 style={{ margin: 0 }}>Cotações & Propostas Comerciais (EU05 - EU12)</h2>
-        <button style={styles.button('success')} onClick={abrirNovaCotacao}>+ Nova Cotação</button>
-      </div>
+    <div className="space-y-6 animate-rise">
+      {/* Header */}
+      <PageHeader
+        eyebrow="Vendas"
+        title="Cotações e propostas"
+        description="Da solicitação ao aceite: crie cotações, elabore propostas e acompanhe a resposta do cliente."
+        actions={
+          <button
+            onClick={() => setIsNewCotacaoOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="size-4" />
+            Nova cotação
+          </button>
+        }
+      />
 
-      {feedback && (
-        <div style={{
-          padding: '12px',
-          borderRadius: '6px',
-          marginBottom: '16px',
-          backgroundColor: feedback.tipo === 'erro' ? '#fee2e2' : '#dcfce7',
-          color: feedback.tipo === 'erro' ? '#b91c1c' : '#15803d'
-        }}>
-          {feedback.texto}
+      {/* Lista de Cotações */}
+      {cotacoes.length === 0 ? (
+        <SectionCard>
+          <EmptyState
+            title="Nada por aqui"
+            text="Nenhuma cotação foi registrada ainda. Inicie um processo de venda acima."
+            action={
+              <button
+                onClick={() => setIsNewCotacaoOpen(true)}
+                className="inline-flex items-center gap-2 text-sm text-primary font-semibold hover:underline"
+              >
+                <Plus className="size-4" />
+                Registrar primeira cotação
+              </button>
+            }
+          />
+        </SectionCard>
+      ) : (
+        <div className="grid gap-6">
+          {cotacoes.map((cotacao) => {
+            const hasProposta = cotacao.propostas && cotacao.propostas.length > 0;
+            return (
+              <SectionCard
+                key={cotacao.id}
+                title={
+                  <div className="flex items-center gap-3">
+                    <span className="font-display font-medium text-base text-foreground">
+                      Cotação #{cotacao.id}
+                    </span>
+                    <StatusBadge status={cotacao.situacao} />
+                  </div>
+                }
+                action={
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Clock className="size-3" />
+                    Solicitada em: {cotacao.dataCotacao}
+                  </span>
+                }
+              >
+                <div className="p-5 space-y-4">
+                  {/* Dados da Cotação */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-border/60">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Cliente
+                      </p>
+                      <p className="font-medium text-foreground text-sm mt-0.5">
+                        {cotacao.clienteNome || `Cliente #${cotacao.clienteId}`}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Tipo de Seguro
+                      </p>
+                      <p className="font-medium text-foreground text-sm mt-0.5">
+                        {cotacao.seguroNome || 'Seguro'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Informações Fornecidas
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {cotacao.informacoesAdicionais || 'Sem observações adicionais.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Área de Proposta */}
+                  {hasProposta ? (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+                        Propostas Vinculadas
+                      </p>
+                      {cotacao.propostas.map((prop) => (
+                        <div
+                          key={prop.id}
+                          className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl border border-border bg-accent/20 gap-3"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-sm text-foreground">
+                                Proposta #{prop.id} · {formatCurrency(prop.premio)}
+                              </span>
+                              <StatusBadge status={prop.situacao} />
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {prop.condicoes}
+                            </p>
+                          </div>
+
+                          {prop.situacao === 'Pendente' && (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleResponderProposta(prop.id, true)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-success-soft text-success border border-success/30 hover:bg-success hover:text-white transition-colors"
+                              >
+                                <CheckCircle2 className="size-3.5" />
+                                Aceitar (Gera apólice)
+                              </button>
+                              <button
+                                onClick={() => handleResponderProposta(prop.id, false)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-danger-soft text-danger border border-danger/30 hover:bg-danger hover:text-white transition-colors"
+                              >
+                                <XCircle className="size-3.5" />
+                                Recusar
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between pt-2">
+                      <p className="text-xs text-muted-foreground italic">
+                        Nenhuma proposta elaborada ainda para esta solicitação.
+                      </p>
+                      <button
+                        onClick={() => handleOpenElaborarProposta(cotacao)}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold bg-primary text-primary-foreground shadow hover:bg-primary/90 transition-colors"
+                      >
+                        <FileCheck className="size-3.5" />
+                        Elaborar proposta
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </SectionCard>
+            );
+          })}
         </div>
       )}
-
-      <div style={{ ...styles.card, padding: '12px' }}>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <span style={{ fontSize: '13px', fontWeight: 'bold' }}>Filtrar por Situação:</span>
-          <select style={{ ...styles.input, width: '220px' }} value={filtroSituacao} onChange={(e) => setFiltroSituacao(e.target.value)}>
-            <option value="">Todas as Cotações</option>
-            <option value="SOLICITADA">SOLICITADA</option>
-            <option value="PROPOSTA_GERADA">PROPOSTA_GERADA</option>
-            <option value="APROVADA">APROVADA</option>
-            <option value="RECUSADA">RECUSADA</option>
-          </select>
-        </div>
-      </div>
-
-      <div style={styles.card}>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>ID</th>
-              <th style={styles.th}>Data</th>
-              <th style={styles.th}>Cliente</th>
-              <th style={styles.th}>Corretor</th>
-              <th style={styles.th}>Seguro</th>
-              <th style={styles.th}>Valor</th>
-              <th style={styles.th}>Situação</th>
-              <th style={styles.th}>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cotacoes.map(c => (
-              <tr key={c.id}>
-                <td style={styles.td}>#{c.id}</td>
-                <td style={styles.td}>{c.dataSolicitacao?.substring(0, 10)}</td>
-                <td style={{ ...styles.td, fontWeight: '600' }}>{c.clienteNome}</td>
-                <td style={styles.td}>{c.corretorNome}</td>
-                <td style={styles.td}>{c.seguroNome}</td>
-                <td style={styles.td}>R$ {c.valor?.toFixed(2)}</td>
-                <td style={styles.td}><span style={styles.badge(c.situacao)}>{c.situacao}</span></td>
-                <td style={styles.td}>
-                  {c.situacao === 'SOLICITADA' && (
-                    <button style={styles.button('primary')} onClick={() => abrirGerarProposta(c)}>
-                      Elaborar Proposta (EU12)
-                    </button>
-                  )}
-                  {c.situacao === 'PROPOSTA_GERADA' && (
-                    <button style={styles.button('warning')} onClick={() => verProposta(c.id)}>
-                      Avaliar Proposta (EU07/EU08)
-                    </button>
-                  )}
-                  {c.situacao === 'APROVADA' && (
-                    <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 'bold' }}>✓ Aprovada</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {cotacoes.length === 0 && (
-              <tr>
-                <td colSpan="8" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
-                  Nenhuma cotação encontrada.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
 
       {/* Modal Nova Cotação */}
-      {modalCotacao && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
-            <h3>Solicitar Nova Cotação (EU05, EU11)</h3>
-            <form onSubmit={salvarCotacao}>
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Cliente *</label>
-                <select style={styles.input} required value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-                  {clientes.map(cl => (
-                    <option key={cl.id} value={cl.id}>{cl.nome} ({cl.cpfCnpj})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Tipo de Seguro *</label>
-                <select
-                  style={styles.input}
-                  required
-                  value={seguroId}
-                  onChange={(e) => {
-                    setSeguroId(e.target.value);
-                    const s = seguros.find(x => x.id === Number(e.target.value));
-                    if (s) setValor(s.valorBase);
-                  }}
-                >
-                  {seguros.map(sg => (
-                    <option key={sg.id} value={sg.id}>{sg.nome} (Base: R$ {sg.valorBase?.toFixed(2)})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Corretor Responsável</label>
-                <select style={styles.input} value={corretorId} onChange={(e) => setCorretorId(e.target.value)}>
-                  <option value="">Aguardando atribuição</option>
-                  {corretores.map(cr => (
-                    <option key={cr.id} value={cr.id}>{cr.nome} ({cr.dadosProfissionais})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Valor do Seguro / Prêmio Estimado (R$)</label>
-                <input type="number" step="0.01" style={styles.input} required value={valor} onChange={(e) => setValor(e.target.value)} />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button type="button" style={styles.button('secondary')} onClick={() => setModalCotacao(false)}>Cancelar</button>
-                <button type="submit" style={styles.button('success')}>Solicitar Cotação</button>
-              </div>
-            </form>
+      <Modal
+        isOpen={isNewCotacaoOpen}
+        onClose={() => setIsNewCotacaoOpen(false)}
+        title="Nova cotação"
+        subtitle="Selecione o cliente solicitante, ramo de cobertura e detalhes do risco."
+      >
+        <form onSubmit={handleCreateCotacao} className="space-y-4">
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              Cliente *
+            </label>
+            <select
+              value={cotacaoForm.clienteId}
+              onChange={(e) => setCotacaoForm({ ...cotacaoForm, clienteId: e.target.value })}
+              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+            >
+              {clientes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome} ({c.cpfCnpj})
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
-      )}
+
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              Tipo de Seguro *
+            </label>
+            <select
+              value={cotacaoForm.seguroId}
+              onChange={(e) => setCotacaoForm({ ...cotacaoForm, seguroId: e.target.value })}
+              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+            >
+              {seguros.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nome} (a partir de R$ {s.premioBase})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              Informações para a cotação *
+            </label>
+            <textarea
+              required
+              rows={3}
+              value={cotacaoForm.informacoesAdicionais}
+              onChange={(e) => setCotacaoForm({ ...cotacaoForm, informacoesAdicionais: e.target.value })}
+              placeholder="Ex: Veículo Toyota Corolla 2024, CEP pernoite 70000-000, motorista 35 anos..."
+              className="w-full rounded-md border border-input bg-card p-3 text-sm"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              type="button"
+              onClick={() => setIsNewCotacaoOpen(false)}
+              className="px-4 py-2 text-sm rounded-md border border-input hover:bg-muted"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90"
+            >
+              Registrar cotação
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Modal Elaborar Proposta */}
-      {modalProposta && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
-            <h3>Elaborar Proposta Comercial (EU12)</h3>
-            <p style={{ margin: '4px 0 12px', color: '#475569' }}>
-              <strong>Cotação:</strong> #{modalProposta.id} | <strong>Cliente:</strong> {modalProposta.clienteNome} | <strong>Seguro:</strong> {modalProposta.seguroNome}
-            </p>
-            <form onSubmit={salvarProposta}>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Condições e Cláusulas da Proposta *</label>
-                <textarea
-                  style={{ ...styles.input, height: '110px' }}
-                  required
-                  value={condicoes}
-                  onChange={(e) => setCondicoes(e.target.value)}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button type="button" style={styles.button('secondary')} onClick={() => setModalProposta(null)}>Cancelar</button>
-                <button type="submit" style={styles.button('primary')}>Enviar Proposta ao Cliente</button>
-              </div>
-            </form>
+      <Modal
+        isOpen={isNewPropostaOpen}
+        onClose={() => setIsNewPropostaOpen(false)}
+        title="Elaborar proposta"
+        subtitle={`Para Cotação #${selectedCotacao?.id} · ${selectedCotacao?.clienteNome}`}
+      >
+        <form onSubmit={handleCreateProposta} className="space-y-4">
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              Valor do Prêmio (R$) *
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              required
+              value={propostaForm.premio}
+              onChange={(e) => setPropostaForm({ ...propostaForm, premio: e.target.value })}
+              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+            />
           </div>
-        </div>
-      )}
 
-      {/* Modal Visualizar / Aceitar Proposta */}
-      {visualizarProposta && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
-            <h3>Avaliação da Proposta (EU07 / EU08)</h3>
-            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', marginBottom: '16px' }}>
-              <p style={{ margin: '0 0 8px' }}><strong>Proposta #{visualizarProposta.id}</strong></p>
-              <p style={{ margin: '0 0 8px' }}><strong>Cliente:</strong> {visualizarProposta.clienteNome}</p>
-              <p style={{ margin: '0 0 8px' }}><strong>Seguro:</strong> {visualizarProposta.seguroNome}</p>
-              <p style={{ margin: '0 0 8px' }}><strong>Valor:</strong> R$ {visualizarProposta.valorCotacao?.toFixed(2)}</p>
-              <p style={{ margin: '0 0 8px' }}><strong>Situação:</strong> <span style={styles.badge(visualizarProposta.situacao)}>{visualizarProposta.situacao}</span></p>
-              <p style={{ margin: '12px 0 4px', fontWeight: 'bold' }}>Condições:</p>
-              <div style={{ whiteSpace: 'pre-wrap', backgroundColor: '#ffffff', padding: '10px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                {visualizarProposta.condicoes}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button style={styles.button('secondary')} onClick={() => setVisualizarProposta(null)}>Fechar</button>
-              {visualizarProposta.situacao === 'PENDENTE' && (
-                <>
-                  <button style={styles.button('danger')} onClick={() => recusarProposta(visualizarProposta.id)}>Recusar Proposta</button>
-                  <button style={styles.button('success')} onClick={() => aceitarProposta(visualizarProposta.id)}>✓ Aceitar Proposta (EU08)</button>
-                </>
-              )}
-            </div>
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              Condições Oferecidas *
+            </label>
+            <textarea
+              required
+              rows={3}
+              value={propostaForm.condicoes}
+              onChange={(e) => setPropostaForm({ ...propostaForm, condicoes: e.target.value })}
+              className="w-full rounded-md border border-input bg-card p-3 text-sm"
+            />
           </div>
-        </div>
-      )}
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              type="button"
+              onClick={() => setIsNewPropostaOpen(false)}
+              className="px-4 py-2 text-sm rounded-md border border-input hover:bg-muted"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90"
+            >
+              Enviar proposta
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
-}
+};

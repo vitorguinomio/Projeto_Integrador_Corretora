@@ -43,15 +43,21 @@ public class ApoliceService {
         this.parcelaPagamentoRepository = parcelaPagamentoRepository;
     }
 
+    @Transactional(readOnly = true)
     public List<ApoliceResponse> pesquisar(String termo, String situacao, Long clienteId, Long corretorId) {
-        return apoliceRepository.pesquisar(
-                (termo != null && !termo.isBlank()) ? termo.trim() : null,
-                (situacao != null && !situacao.isBlank()) ? situacao.toUpperCase() : null,
-                clienteId,
-                corretorId
-        ).stream().map(this::toResponse).toList();
+        boolean semFiltros = (termo == null || termo.isBlank()) && (situacao == null || situacao.isBlank()) && clienteId == null && corretorId == null;
+        List<Apolice> lista = semFiltros
+                ? apoliceRepository.findAll()
+                : apoliceRepository.pesquisar(
+                        (termo != null && !termo.isBlank()) ? termo.trim() : null,
+                        (situacao != null && !situacao.isBlank()) ? situacao.toUpperCase() : null,
+                        clienteId,
+                        corretorId
+                );
+        return lista.stream().map(this::toResponse).toList();
     }
 
+    @Transactional(readOnly = true)
     public ApoliceResponse buscarPorId(Long id) {
         Apolice apolice = buscarEntidadePorId(id);
         return toResponse(apolice);

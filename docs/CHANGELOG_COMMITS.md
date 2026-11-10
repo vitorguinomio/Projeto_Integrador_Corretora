@@ -113,3 +113,35 @@ Este documento registra detalhadamente as entregas efetuadas no repositório Git
   10. `frontend/src/components/RelatoriosTab.jsx`: Tela de relatórios consolidados em 4 visões analíticas com opção de impressão/PDF (RF35).
   11. `frontend/src/components/AuditoriaTab.jsx`: Tela de controle de contas de usuários e visualização da trilha de auditoria (RF28, RF29, RNF22).
   12. `frontend/src/App.jsx`: Estrutura principal com seletor de perfis de teste rápido (Admin, Corretor, Cliente), modal de login manual e navegação entre abas.
+
+---
+
+## [Commit 7] - Integração do Protótipo Visual Lovable e Ajustes de Persistência Backend
+- **Data/Hora:** 2026-11-10 06:20
+- **Mensagem:** `feat: integracao completa do prototipo visual lovable ao frontend e ajustes de persistencia backend`
+- **O que foi enviado para o Git:**
+  1. `frontend/index.html`: Inclusão das tipografias oficiais do protótipo Lovable (`Fraunces`, `Manrope`, `JetBrains Mono`) e configuração de viewport responsivo.
+  2. `frontend/src/lovable-theme.css`: Integração de variáveis de estilo OKLCH (`--paper`, `--ink`, `--primary`, `--signal`, etc.), utilitários de gradiente (`bg-gradient-signal`, `bg-gradient-ink`) e regras de layout do protótipo.
+  3. `frontend/public/login-brasilia.jpg`: Imagem de capa em alta definição com arquitetura modernista de Brasília para a tela de autenticação split-screen.
+  4. `frontend/package.json` & `frontend/package-lock.json`: Instalação e configuração da biblioteca de ícones `lucide-react`.
+  5. `frontend/src/components/ui/UiBits.jsx`: Componentes atômicos com o design Lovable (`PageHeader`, `StatCard`, `StatusBadge`, `SectionCard`, `EmptyState`, `CodeText`, `Modal`).
+  6. `frontend/src/components/AppShell.jsx`: Shell com barra lateral expansível, seções Operação e Gestão, contador de alertas, seletor de perfis e rodapé do usuário logado.
+  7. `frontend/src/components/LoginView.jsx`: Tela de login split-screen com abas para perfis pré-configurados (Admin, Corretor, Cliente), alternância de senha e integração com a autenticação JWT do backend.
+  8. `frontend/src/components/DashboardTab.jsx`: Painel analítico com KPIs, lista de apólices a vencer com badges de contagem regressiva, cotações recentes, distribuição percentual de tipos de seguros e alertas críticos.
+  9. `frontend/src/components/ClientesTab.jsx`: Gestão completa de clientes com busca instantânea, filtros PF/PJ, cadastro com endereços e telefones múltiplos, e histórico completo de apólices e cotações.
+  10. `frontend/src/components/ApolicesTab.jsx`: Gestão de apólices com status visual, detalhamento e quitação individual de parcelas de pagamento, renovação com histórico anterior e cancelamento seguro.
+  11. `frontend/src/components/CotacoesTab.jsx`: Solicitação de cotações com cálculo do valor base, elaboração de propostas comerciais e fluxo de aceite e recusa com emissão associada.
+  12. `frontend/src/components/AlertasTab.jsx`: Central de notificações e monitoramento de apólices com vencimento nos próximos 30 dias com marcação de leitura.
+  13. `frontend/src/components/SegurosTab.jsx`: Catálogo em formato de grid de tipos de seguro com coberturas detalhadas, criação de novos seguros e inclusão de coberturas dinâmicas.
+  14. `frontend/src/components/CorretoresTab.jsx`: Equipe de corretores com cadastro SUSEP, canais de contato, status ativo/inativo e cadastro de novos profissionais.
+  15. `frontend/src/components/UsuariosTab.jsx`: Gestão de usuários do sistema, alternância de acesso ativo/inativo e matriz de permissões por perfil.
+  16. `frontend/src/components/RelatoriosTab.jsx`: Visões analíticas da carteira por corretor, situação das apólices e exportação para formato CSV.
+  17. `frontend/src/components/AuditoriaTab.jsx`: Trilha de auditoria com filtros por entidade e ação, identificação de operador, data/hora e IP.
+  18. `frontend/src/App.jsx`: Roteamento e orquestração dos módulos, controle de sessão ativa e sincronização com o backend.
+  19. Backend Spring Boot:
+      - `SeguroRepository.java` e `SeguroService.java`: Consulta `findAllWithCoberturas()` com `LEFT JOIN FETCH` e transações `@Transactional(readOnly = true)` para prevenção de `LazyInitializationException`.
+      - `DashboardController.java` e `DashboardService.java`: Alias `/stats` e transação somente-leitura.
+      - `ClienteService.java`: Extração e fallback de DDD automático e estado padrão em endereços.
+      - `ClienteRequest.java`: Flexibilização de `dataNasc` como campo opcional.
+      - `ApoliceRepository.java` e `ApoliceService.java`: Compatibilização de tipos no JPQL PostgreSQL (`CAST(:termo AS string)`) e bypass de busca sem filtros.
+

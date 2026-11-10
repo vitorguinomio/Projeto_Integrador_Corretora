@@ -1,359 +1,694 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import {
+  Users,
+  Search,
+  Plus,
+  Eye,
+  Trash2,
+  Phone,
+  Mail,
+  MapPin,
+  Building,
+  User,
+  Shield,
+  FileCheck,
+  Calendar,
+  AlertCircle
+} from 'lucide-react';
+import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal, CodeText } from './ui/UiBits';
 import { apiFetch } from '../api';
-import { styles } from '../styles';
 
-export default function ClientesTab() {
+export const ClientesTab = ({ currentUser, currentRole }) => {
   const [clientes, setClientes] = useState([]);
-  const [termo, setTermo] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [modalAberto, setModalAberto] = useState(false);
-  const [historicoModal, setHistoricoModal] = useState(null);
-  const [editando, setEditando] = useState(null);
-  const [feedback, setFeedback] = useState(null);
+  const [corretores, setCorretores] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [tipoFilter, setTipoFilter] = useState('TODOS');
+  const [selectedCorretorId, setSelectedCorretorId] = useState('');
 
-  // Formulário
-  const [nome, setNome] = useState('');
-  const [cpfCnpj, setCpfCnpj] = useState('');
-  const [dataNasc, setDataNasc] = useState('');
-  const [email, setEmail] = useState('');
-  const [senhaAcesso, setSenhaAcesso] = useState('');
-  // Endereço
-  const [cep, setCep] = useState('');
-  const [logradouro, setLogradouro] = useState('');
-  const [numero, setNumero] = useState('');
-  const [complemento, setComplemento] = useState('');
-  const [bairro, setBairro] = useState('');
-  const [cidade, setCidade] = useState('');
-  const [estado, setEstado] = useState('DF');
-  // Telefone
-  const [ddd, setDdd] = useState('61');
-  const [numTel, setNumTel] = useState('');
-  const [tipoTel, setTipoTel] = useState('CELULAR');
+  // Modais
+  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [selectedClienteHistory, setSelectedClienteHistory] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
-  const carregarClientes = async (busca = '') => {
-    try {
-      setLoading(true);
-      const url = busca ? `/clientes?busca=${encodeURIComponent(busca)}` : '/clientes';
-      const data = await apiFetch(url);
-      setClientes(data);
-    } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Form de novo cliente
+  const [form, setForm] = useState({
+    nome: '',
+    cpfCnpj: '',
+    tipo: 'PF',
+    email: '',
+    telefone: '',
+    tipoTelefone: 'CELULAR',
+    logradouro: '',
+    numero: '',
+    bairro: '',
+    cidade: '',
+    uf: 'DF',
+    cep: '',
+    dataNasc: '1990-01-01',
+    corretorId: ''
+  });
+  const [formError, setFormError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    carregarClientes();
+    loadData();
   }, []);
 
-  const abrirNovo = () => {
-    setEditando(null);
-    setNome('');
-    setCpfCnpj('');
-    setDataNasc('1990-01-01');
-    setEmail('');
-    setSenhaAcesso('cliente123');
-    setCep('70000-000');
-    setLogradouro('Quadra 1');
-    setNumero('10');
-    setComplemento('');
-    setBairro('Asa Sul');
-    setCidade('Brasília');
-    setEstado('DF');
-    setDdd('61');
-    setNumTel('98765-4321');
-    setTipoTel('CELULAR');
-    setModalAberto(true);
-  };
-
-  const abrirEdicao = (c) => {
-    setEditando(c);
-    setNome(c.nome);
-    setCpfCnpj(c.cpfCnpj);
-    setDataNasc(c.dataNasc || '');
-    setEmail(c.email);
-    setSenhaAcesso('');
-    if (c.enderecos && c.enderecos.length > 0) {
-      const e = c.enderecos[0];
-      setCep(e.cep);
-      setLogradouro(e.logradouro);
-      setNumero(e.numero);
-      setComplemento(e.complemento || '');
-      setBairro(e.bairro);
-      setCidade(e.cidade);
-      setEstado(e.estado);
-    }
-    if (c.telefones && c.telefones.length > 0) {
-      const t = c.telefones[0];
-      setDdd(t.ddd);
-      setNumTel(t.numero);
-      setTipoTel(t.tipo);
-    }
-    setModalAberto(true);
-  };
-
-  const salvarCliente = async (e) => {
-    e.preventDefault();
-    setFeedback(null);
-    const payload = {
-      nome,
-      cpfCnpj,
-      dataNasc,
-      email,
-      senhaAcesso: senhaAcesso || undefined,
-      enderecos: [{ cep, logradouro, numero, complemento, bairro, cidade, estado }],
-      telefones: [{ ddd, numero: numTel, tipo: tipoTel }]
-    };
-
-    try {
-      if (editando) {
-        await apiFetch(`/clientes/${editando.id}`, { method: 'PUT', body: JSON.stringify(payload) });
-        setFeedback({ tipo: 'sucesso', texto: 'Cliente atualizado com sucesso!' });
-      } else {
-        await apiFetch('/clientes', { method: 'POST', body: JSON.stringify(payload) });
-        setFeedback({ tipo: 'sucesso', texto: 'Cliente cadastrado com sucesso!' });
-      }
-      setModalAberto(false);
-      carregarClientes(termo);
-    } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
-    }
-  };
-
-  const excluirCliente = async (id, nomeCliente) => {
-    if (!window.confirm(`Tem certeza que deseja excluir o cliente ${nomeCliente}?`)) return;
-    try {
-      await apiFetch(`/clientes/${id}`, { method: 'DELETE' });
-      setFeedback({ tipo: 'sucesso', texto: `Cliente ${nomeCliente} excluído com sucesso.` });
-      carregarClientes(termo);
-    } catch (err) {
-      setFeedback({ tipo: 'erro', texto: `Bloqueio de integridade (RF04/RF34): ${err.message}` });
-    }
-  };
-
-  const verHistorico = async (id) => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const data = await apiFetch(`/clientes/${id}/historico`);
-      setHistoricoModal(data);
+      const [clientesData, corretoresData] = await Promise.all([
+        apiFetch('/clientes').catch(() => []),
+        apiFetch('/corretores').catch(() => [])
+      ]);
+      setClientes(clientesData || []);
+      setCorretores(corretoresData || []);
+      if (corretoresData && corretoresData.length > 0) {
+        setForm((prev) => ({ ...prev, corretorId: corretoresData[0].id }));
+      }
     } catch (err) {
-      setFeedback({ tipo: 'erro', texto: err.message });
+      console.error('Erro ao carregar clientes:', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOpenHistory = async (cliente) => {
+    try {
+      setHistoryLoading(true);
+      setSelectedClienteHistory(cliente);
+      const fullHistory = await apiFetch(`/clientes/${cliente.id}/historico`).catch(() => null);
+      if (fullHistory) {
+        setSelectedClienteHistory(fullHistory);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar histórico:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleDelete = async (id, nome) => {
+    if (!window.confirm(`Deseja realmente excluir o cliente "${nome}"? Esta ação removerá registros vinculados se permitido.`)) {
+      return;
+    }
+    try {
+      await apiFetch(`/clientes/${id}`, { method: 'DELETE' });
+      setClientes(clientes.filter((c) => c.id !== id));
+      alert('Cliente excluído com sucesso.');
+    } catch (err) {
+      alert(`Não foi possível excluir o cliente: ${err.message}`);
+    }
+  };
+
+  const handleCreateSubmit = async (e) => {
+    e.preventDefault();
+    setFormError(null);
+
+    if (!form.nome || !form.cpfCnpj || !form.email) {
+      setFormError('Por favor preencha nome, CPF/CNPJ e e-mail.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const payload = {
+        nome: form.nome,
+        cpfCnpj: form.cpfCnpj.replace(/\D/g, ''),
+        tipo: form.tipo,
+        email: form.email,
+        dataNasc: form.dataNasc || '1990-01-01',
+        corretorId: form.corretorId ? Number(form.corretorId) : null,
+        telefones: form.telefone
+          ? [{ numero: form.telefone, tipo: form.tipoTelefone }]
+          : [],
+        enderecos: form.logradouro
+          ? [
+              {
+                logradouro: form.logradouro,
+                numero: form.numero,
+                bairro: form.bairro,
+                cidade: form.cidade || 'Brasília',
+                estado: form.uf || 'DF',
+                cep: form.cep || '70000-000'
+              }
+            ]
+          : []
+      };
+
+      const novo = await apiFetch('/clientes', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      setClientes([novo, ...clientes]);
+      setIsNewModalOpen(false);
+      setForm({
+        nome: '',
+        cpfCnpj: '',
+        tipo: 'PF',
+        email: '',
+        telefone: '',
+        tipoTelefone: 'CELULAR',
+        logradouro: '',
+        numero: '',
+        bairro: '',
+        cidade: '',
+        uf: 'DF',
+        cep: '',
+        corretorId: corretores[0]?.id || ''
+      });
+      alert('Cliente cadastrado com sucesso!');
+    } catch (err) {
+      setFormError(err.message || 'Erro ao cadastrar cliente.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const filteredClientes = clientes.filter((c) => {
+    const matchesSearch =
+      (c.nome && c.nome.toLowerCase().includes(search.toLowerCase())) ||
+      (c.cpfCnpj && c.cpfCnpj.includes(search)) ||
+      (c.email && c.email.toLowerCase().includes(search.toLowerCase())) ||
+      (c.id && String(c.id).includes(search));
+
+    const matchesTipo =
+      tipoFilter === 'TODOS' ||
+      (tipoFilter === 'PF' && (c.tipo === 'PF' || c.cpfCnpj?.length <= 14)) ||
+      (tipoFilter === 'PJ' && (c.tipo === 'PJ' || c.cpfCnpj?.length > 14));
+
+    const matchesCorretor =
+      !selectedCorretorId || String(c.corretorId) === String(selectedCorretorId);
+
+    return matchesSearch && matchesTipo && matchesCorretor;
+  });
+
+  const getInitials = (nome) => {
+    if (!nome) return 'CL';
+    return nome
+      .split(' ')
+      .slice(0, 2)
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase();
+  };
+
+  const formatCpfCnpj = (val) => {
+    if (!val) return '—';
+    const clean = val.replace(/\D/g, '');
+    if (clean.length === 11) {
+      return clean.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    }
+    if (clean.length === 14) {
+      return clean.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+    }
+    return val;
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h2 style={{ margin: 0 }}>Gestão de Clientes (RF01 - RF04, RF24)</h2>
-        <button style={styles.button('success')} onClick={abrirNovo}>+ Novo Cliente</button>
-      </div>
+    <div className="space-y-6 animate-rise">
+      {/* Header */}
+      <PageHeader
+        eyebrow="Cadastros"
+        title="Clientes"
+        description="Pesquise por nome, CPF/CNPJ, e-mail ou código. Clique em um cliente para ver o histórico completo."
+        actions={
+          <button
+            onClick={() => setIsNewModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="size-4" />
+            Cadastrar cliente
+          </button>
+        }
+      />
 
-      {feedback && (
-        <div style={{
-          padding: '12px',
-          borderRadius: '6px',
-          marginBottom: '16px',
-          backgroundColor: feedback.tipo === 'erro' ? '#fee2e2' : '#dcfce7',
-          color: feedback.tipo === 'erro' ? '#b91c1c' : '#15803d'
-        }}>
-          {feedback.texto}
-        </div>
-      )}
-
-      <div style={{ ...styles.card, padding: '12px' }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
+      {/* Barra de Filtros e Busca */}
+      <div className="flex flex-col md:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
-            style={styles.input}
-            placeholder="Pesquisar por Nome, CPF/CNPJ ou E-mail (RF03, RF25)..."
-            value={termo}
-            onChange={(e) => setTermo(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && carregarClientes(termo)}
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Pesquise por nome, CPF/CNPJ, e-mail ou código..."
+            className="h-10 w-full rounded-md border border-input bg-card pl-9 pr-4 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
           />
-          <button style={styles.button('primary')} onClick={() => carregarClientes(termo)}>Buscar</button>
-          <button style={styles.button('secondary')} onClick={() => { setTermo(''); carregarClientes(''); }}>Limpar</button>
         </div>
+
+        <select
+          value={tipoFilter}
+          onChange={(e) => setTipoFilter(e.target.value)}
+          className="h-10 rounded-md border border-input bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="TODOS">Todos os tipos</option>
+          <option value="PF">Pessoa física</option>
+          <option value="PJ">Pessoa jurídica</option>
+        </select>
+
+        <select
+          value={selectedCorretorId}
+          onChange={(e) => setSelectedCorretorId(e.target.value)}
+          className="h-10 rounded-md border border-input bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="">Todos os corretores</option>
+          {corretores.map((corretor) => (
+            <option key={corretor.id} value={corretor.id}>
+              {corretor.nome}
+            </option>
+          ))}
+        </select>
       </div>
 
-      <div style={styles.card}>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>ID</th>
-              <th style={styles.th}>Nome</th>
-              <th style={styles.th}>CPF/CNPJ</th>
-              <th style={styles.th}>E-mail</th>
-              <th style={styles.th}>Data Nasc.</th>
-              <th style={styles.th}>Endereço / Telefone</th>
-              <th style={styles.th}>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {clientes.map(c => {
-              const end = c.enderecos && c.enderecos[0] ? `${c.enderecos[0].cidade}-${c.enderecos[0].estado}` : '-';
-              const tel = c.telefones && c.telefones[0] ? `(${c.telefones[0].ddd}) ${c.telefones[0].numero}` : '-';
-              return (
-                <tr key={c.id}>
-                  <td style={styles.td}>#{c.id}</td>
-                  <td style={{ ...styles.td, fontWeight: '600' }}>{c.nome}</td>
-                  <td style={styles.td}>{c.cpfCnpj}</td>
-                  <td style={styles.td}>{c.email}</td>
-                  <td style={styles.td}>{c.dataNasc}</td>
-                  <td style={styles.td}>{end} | {tel}</td>
-                  <td style={styles.td}>
-                    <button style={styles.button('primary')} onClick={() => verHistorico(c.id)}>Histórico</button>
-                    <button style={styles.button('warning')} onClick={() => abrirEdicao(c)}>Editar</button>
-                    <button style={styles.button('danger')} onClick={() => excluirCliente(c.id, c.nome)}>Excluir</button>
-                  </td>
+      {/* Tabela de Clientes */}
+      <SectionCard>
+        {filteredClientes.length === 0 ? (
+          <EmptyState
+            title="Nenhum cliente encontrado"
+            text="Tente ajustar a busca ou os filtros aplicados."
+            action={
+              <button
+                onClick={() => setIsNewModalOpen(true)}
+                className="inline-flex items-center gap-2 text-sm text-primary font-semibold hover:underline"
+              >
+                <Plus className="size-4" />
+                Cadastrar novo cliente
+              </button>
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="px-5 py-3.5">Cliente</th>
+                  <th className="px-5 py-3.5">CPF / CNPJ</th>
+                  <th className="px-5 py-3.5">Contato</th>
+                  <th className="px-5 py-3.5">Corretor</th>
+                  <th className="px-5 py-3.5 text-center">Apólices</th>
+                  <th className="px-5 py-3.5 text-right">Ações</th>
                 </tr>
-              );
-            })}
-            {clientes.length === 0 && !loading && (
-              <tr>
-                <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
-                  Nenhum cliente cadastrado ou encontrado na pesquisa.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {filteredClientes.map((cliente) => {
+                  const isPj = cliente.tipo === 'PJ' || cliente.cpfCnpj?.length > 14;
+                  return (
+                    <tr
+                      key={cliente.id}
+                      className="hover:bg-accent/40 transition-colors group cursor-pointer"
+                      onClick={() => handleOpenHistory(cliente)}
+                    >
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <span className="inline-flex size-9 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground shrink-0">
+                            {getInitials(cliente.nome)}
+                          </span>
+                          <div>
+                            <p className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                              {cliente.nome}
+                            </p>
+                            <span className="text-[0.7rem] text-muted-foreground flex items-center gap-1">
+                              {isPj ? <Building className="size-3" /> : <User className="size-3" />}
+                              Código #{cliente.id} · {isPj ? 'Pessoa Jurídica' : 'Pessoa Física'}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
 
-      {/* Modal Cadastro/Edição */}
-      {modalAberto && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
-            <h3>{editando ? `Editar Cliente #${editando.id}` : 'Novo Cadastro de Cliente (RF01)'}</h3>
-            <form onSubmit={salvarCliente}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Nome Completo *</label>
-                  <input style={styles.input} required value={nome} onChange={(e) => setNome(e.target.value)} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>CPF ou CNPJ *</label>
-                  <input style={styles.input} required value={cpfCnpj} onChange={(e) => setCpfCnpj(e.target.value)} />
-                </div>
-              </div>
+                      <td className="px-5 py-4 font-mono text-xs text-muted-foreground">
+                        {formatCpfCnpj(cliente.cpfCnpj)}
+                      </td>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Data de Nascimento *</label>
-                  <input type="date" style={styles.input} required value={dataNasc} onChange={(e) => setDataNasc(e.target.value)} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>E-mail *</label>
-                  <input type="email" style={styles.input} required value={email} onChange={(e) => setEmail(e.target.value)} />
-                </div>
-              </div>
+                      <td className="px-5 py-4 text-xs space-y-1">
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <Mail className="size-3 text-primary" />
+                          <span className="truncate max-w-[180px]">{cliente.email}</span>
+                        </div>
+                        {cliente.telefones && cliente.telefones.length > 0 && (
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Phone className="size-3 text-primary" />
+                            <span>{cliente.telefones[0].numero}</span>
+                          </div>
+                        )}
+                      </td>
 
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Senha de Acesso ao Portal (opcional)</label>
-                <input type="password" style={styles.input} placeholder="Deixe em branco para manter" value={senhaAcesso} onChange={(e) => setSenhaAcesso(e.target.value)} />
-              </div>
+                      <td className="px-5 py-4 text-xs text-foreground">
+                        {cliente.corretorNome || 'HCR Corretora'}
+                      </td>
 
-              <h4 style={{ margin: '16px 0 8px' }}>Endereço (Tabela endereco)</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                <input style={styles.input} placeholder="CEP" value={cep} onChange={(e) => setCep(e.target.value)} />
-                <input style={styles.input} placeholder="Logradouro" value={logradouro} onChange={(e) => setLogradouro(e.target.value)} />
-                <input style={styles.input} placeholder="Número" value={numero} onChange={(e) => setNumero(e.target.value)} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                <input style={styles.input} placeholder="Complemento" value={complemento} onChange={(e) => setComplemento(e.target.value)} />
-                <input style={styles.input} placeholder="Bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} />
-                <input style={styles.input} placeholder="Cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} />
-                <input style={styles.input} placeholder="UF" maxLength="2" value={estado} onChange={(e) => setEstado(e.target.value.toUpperCase())} />
-              </div>
+                      <td className="px-5 py-4 text-center">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-accent text-accent-foreground">
+                          {cliente.totalApolices || (cliente.apolices ? cliente.apolices.length : 0)}
+                        </span>
+                      </td>
 
-              <h4 style={{ margin: '16px 0 8px' }}>Telefone (Tabela telefone)</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr', gap: '8px', marginBottom: '16px' }}>
-                <input style={styles.input} placeholder="DDD" maxLength="2" value={ddd} onChange={(e) => setDdd(e.target.value)} />
-                <input style={styles.input} placeholder="Número" value={numTel} onChange={(e) => setNumTel(e.target.value)} />
-                <select style={styles.input} value={tipoTel} onChange={(e) => setTipoTel(e.target.value)}>
-                  <option value="CELULAR">CELULAR</option>
-                  <option value="FIXO">FIXO</option>
-                  <option value="COMERCIAL">COMERCIAL</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button type="button" style={styles.button('secondary')} onClick={() => setModalAberto(false)}>Cancelar</button>
-                <button type="submit" style={styles.button('success')}>Salvar Cliente</button>
-              </div>
-            </form>
+                      <td className="px-5 py-4 text-right">
+                        <div
+                          className="flex items-center justify-end gap-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            onClick={() => handleOpenHistory(cliente)}
+                            title="Ver histórico completo"
+                            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <Eye className="size-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(cliente.id, cliente.nome)}
+                            title="Excluir cliente"
+                            className="p-1.5 rounded-md hover:bg-danger-soft text-muted-foreground hover:text-danger transition-colors"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        </div>
-      )}
+        )}
+      </SectionCard>
 
-      {/* Modal Histórico do Cliente */}
-      {historicoModal && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalContent}>
-            <h3>Histórico Completo do Segurado (RF24 / EU18)</h3>
-            <p style={{ margin: '4px 0 16px', color: '#475569' }}>
-              <strong>Cliente:</strong> {historicoModal.cliente.nome} | <strong>CPF:</strong> {historicoModal.cliente.cpfCnpj}
-            </p>
+      {/* Modal Novo Cliente */}
+      <Modal
+        isOpen={isNewModalOpen}
+        onClose={() => setIsNewModalOpen(false)}
+        title="Cadastrar cliente"
+        subtitle="Preencha os dados cadastrais, endereço e contato do novo cliente."
+        maxWidth="max-w-2xl"
+      >
+        <form onSubmit={handleCreateSubmit} className="space-y-4">
+          {formError && (
+            <div className="rounded-lg bg-danger-soft p-3 text-sm text-danger border border-danger/20 flex items-center gap-2">
+              <AlertCircle className="size-4 shrink-0" />
+              <span>{formError}</span>
+            </div>
+          )}
 
-            <h4>Apólices Vinculadas ({historicoModal.apolices.length})</h4>
-            {historicoModal.apolices.length === 0 ? <p style={{ fontSize: '13px', color: '#64748b' }}>Nenhuma apólice contratada.</p> : (
-              <table style={{ ...styles.table, marginBottom: '16px' }}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Número</th>
-                    <th style={styles.th}>Seguro</th>
-                    <th style={styles.th}>Vigência</th>
-                    <th style={styles.th}>Situação</th>
-                    <th style={styles.th}>Prêmio</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historicoModal.apolices.map(a => (
-                    <tr key={a.id}>
-                      <td style={styles.td}>{a.numeroApolice}</td>
-                      <td style={styles.td}>{a.seguroNome}</td>
-                      <td style={styles.td}>{a.dataInicio} até {a.dataTermino}</td>
-                      <td style={styles.td}><span style={styles.badge(a.situacao)}>{a.situacao}</span></td>
-                      <td style={styles.td}>R$ {a.valorPremio?.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+                Tipo de Pessoa *
+              </label>
+              <select
+                value={form.tipo}
+                onChange={(e) => setForm({ ...form, tipo: e.target.value })}
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="PF">Pessoa Física (CPF)</option>
+                <option value="PJ">Pessoa Jurídica (CNPJ)</option>
+              </select>
+            </div>
 
-            <h4>Cotações Realizadas ({historicoModal.cotacoes.length})</h4>
-            {historicoModal.cotacoes.length === 0 ? <p style={{ fontSize: '13px', color: '#64748b' }}>Nenhuma cotação registrada.</p> : (
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>ID</th>
-                    <th style={styles.th}>Seguro</th>
-                    <th style={styles.th}>Corretor</th>
-                    <th style={styles.th}>Situação</th>
-                    <th style={styles.th}>Valor</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historicoModal.cotacoes.map(c => (
-                    <tr key={c.id}>
-                      <td style={styles.td}>#{c.id}</td>
-                      <td style={styles.td}>{c.seguroNome}</td>
-                      <td style={styles.td}>{c.corretorNome}</td>
-                      <td style={styles.td}><span style={styles.badge(c.situacao)}>{c.situacao}</span></td>
-                      <td style={styles.td}>R$ {c.valor?.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-              <button style={styles.button('primary')} onClick={() => setHistoricoModal(null)}>Fechar Histórico</button>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+                CPF / CNPJ *
+              </label>
+              <input
+                type="text"
+                required
+                value={form.cpfCnpj}
+                onChange={(e) => setForm({ ...form, cpfCnpj: e.target.value })}
+                placeholder={form.tipo === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
             </div>
           </div>
-        </div>
-      )}
+
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              Nome Completo / Razão Social *
+            </label>
+            <input
+              type="text"
+              required
+              value={form.nome}
+              onChange={(e) => setForm({ ...form, nome: e.target.value })}
+              placeholder="Ex: Carlos Eduardo de Souza"
+              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+                E-mail *
+              </label>
+              <input
+                type="email"
+                required
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="cliente@email.com"
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+                Telefone
+              </label>
+              <input
+                type="text"
+                value={form.telefone}
+                onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+                placeholder="(61) 99888-7766"
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+
+          <div className="border-t border-border pt-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">
+              Endereço Principal
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <input
+                  type="text"
+                  placeholder="Logradouro (Rua, Av.)"
+                  value={form.logradouro}
+                  onChange={(e) => setForm({ ...form, logradouro: e.target.value })}
+                  className="h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
+                />
+              </div>
+              <div>
+                <input
+                  type="text"
+                  placeholder="Número"
+                  value={form.numero}
+                  onChange={(e) => setForm({ ...form, numero: e.target.value })}
+                  className="h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3 mt-3">
+              <div>
+                <input
+                  type="text"
+                  placeholder="Bairro"
+                  value={form.bairro}
+                  onChange={(e) => setForm({ ...form, bairro: e.target.value })}
+                  className="h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
+                />
+              </div>
+              <div>
+                <input
+                  type="text"
+                  placeholder="Cidade"
+                  value={form.cidade}
+                  onChange={(e) => setForm({ ...form, cidade: e.target.value })}
+                  className="h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
+                />
+              </div>
+              <div>
+                <input
+                  type="text"
+                  placeholder="UF (DF, SP...)"
+                  value={form.uf}
+                  onChange={(e) => setForm({ ...form, uf: e.target.value })}
+                  className="h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              Corretor Responsável
+            </label>
+            <select
+              value={form.corretorId}
+              onChange={(e) => setForm({ ...form, corretorId: e.target.value })}
+              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {corretores.map((corretor) => (
+                <option key={corretor.id} value={corretor.id}>
+                  {corretor.nome} (SUSEP {corretor.registroSusep})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              type="button"
+              onClick={() => setIsNewModalOpen(false)}
+              className="px-4 py-2 text-sm rounded-md border border-input hover:bg-muted"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90 disabled:opacity-50"
+            >
+              {submitting ? 'Cadastrando...' : 'Salvar cliente'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Drawer / Modal Histórico Completo */}
+      <Modal
+        isOpen={!!selectedClienteHistory}
+        onClose={() => setSelectedClienteHistory(null)}
+        title={selectedClienteHistory?.nome || 'Histórico do Cliente'}
+        subtitle={`Código #${selectedClienteHistory?.id} · CPF/CNPJ: ${selectedClienteHistory?.cpfCnpj}`}
+        maxWidth="max-w-3xl"
+      >
+        {historyLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">
+            Carregando histórico do cliente...
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Informações de Contato e Endereço */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-muted/40 p-4 rounded-xl border border-border">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  Dados de Contato
+                </p>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Mail className="size-3.5 text-primary" />
+                    <span>{selectedClienteHistory?.email}</span>
+                  </div>
+                  {selectedClienteHistory?.telefones?.map((t, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Phone className="size-3.5 text-primary" />
+                      <span>{t.numero} ({t.tipo})</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  Endereço Cadastrado
+                </p>
+                {selectedClienteHistory?.enderecos && selectedClienteHistory.enderecos.length > 0 ? (
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    <p className="text-foreground font-medium">
+                      {selectedClienteHistory.enderecos[0].logradouro}, {selectedClienteHistory.enderecos[0].numero}
+                    </p>
+                    <p>
+                      {selectedClienteHistory.enderecos[0].bairro} — {selectedClienteHistory.enderecos[0].cidade}/{selectedClienteHistory.enderecos[0].uf}
+                    </p>
+                    <p>CEP: {selectedClienteHistory.enderecos[0].cep}</p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Nenhum endereço vinculado.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Apólices do Cliente */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-sans font-semibold text-sm text-foreground flex items-center gap-2">
+                  <Shield className="size-4 text-primary" />
+                  Apólices Contratadas
+                </h4>
+                <span className="text-xs text-muted-foreground">
+                  {selectedClienteHistory?.apolices?.length || 0} apólices
+                </span>
+              </div>
+
+              {selectedClienteHistory?.apolices && selectedClienteHistory.apolices.length > 0 ? (
+                <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
+                  {selectedClienteHistory.apolices.map((ap) => (
+                    <div key={ap.id} className="p-3 bg-card hover:bg-accent/20 flex items-center justify-between text-xs">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground">
+                            {ap.seguroNome || 'Seguro'}
+                          </span>
+                          <StatusBadge status={ap.situacao} />
+                        </div>
+                        <p className="text-muted-foreground mt-0.5">
+                          Apólice: {ap.numeroApolice} · Vigência até {ap.dataTermino}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-foreground">
+                          R$ {Number(ap.premio).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic bg-card p-3 rounded-lg border border-border text-center">
+                  Nenhuma apólice contratada até o momento.
+                </p>
+              )}
+            </div>
+
+            {/* Cotações do Cliente */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-sans font-semibold text-sm text-foreground flex items-center gap-2">
+                  <FileCheck className="size-4 text-primary" />
+                  Cotações Solicitadas
+                </h4>
+                <span className="text-xs text-muted-foreground">
+                  {selectedClienteHistory?.cotacoes?.length || 0} cotações
+                </span>
+              </div>
+
+              {selectedClienteHistory?.cotacoes && selectedClienteHistory.cotacoes.length > 0 ? (
+                <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
+                  {selectedClienteHistory.cotacoes.map((cot) => (
+                    <div key={cot.id} className="p-3 bg-card hover:bg-accent/20 flex items-center justify-between text-xs">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground">
+                            Cotação #{cot.id} · {cot.seguroNome || 'Seguro'}
+                          </span>
+                          <StatusBadge status={cot.situacao} />
+                        </div>
+                        <p className="text-muted-foreground mt-0.5">
+                          Solicitada em {cot.dataCotacao}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic bg-card p-3 rounded-lg border border-border text-center">
+                  Nenhuma cotação registrada.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
-}
+};
