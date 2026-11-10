@@ -1,11 +1,17 @@
 package com.hcr.corretora.features.clientes;
 
+import com.hcr.corretora.features.apolices.ApoliceService;
+import com.hcr.corretora.features.apolices.dto.ApoliceResponse;
+import com.hcr.corretora.features.clientes.dto.ClienteHistoricoResponse;
 import com.hcr.corretora.features.clientes.dto.ClienteRequest;
 import com.hcr.corretora.features.clientes.dto.ClienteResponse;
 import com.hcr.corretora.features.clientes.dto.EnderecoDto;
 import com.hcr.corretora.features.clientes.dto.TelefoneDto;
+import com.hcr.corretora.features.cotacoes.CotacaoService;
+import com.hcr.corretora.features.cotacoes.dto.CotacaoResponse;
 import com.hcr.corretora.features.usuarios.Usuario;
 import com.hcr.corretora.features.usuarios.UsuarioRepository;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,15 +25,21 @@ public class ClienteService {
     private final ClienteRepository clienteRepository;
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
+    private final CotacaoService cotacaoService;
+    private final ApoliceService apoliceService;
 
     public ClienteService(
             ClienteRepository clienteRepository,
             UsuarioRepository usuarioRepository,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            @Lazy CotacaoService cotacaoService,
+            @Lazy ApoliceService apoliceService
     ) {
         this.clienteRepository = clienteRepository;
         this.usuarioRepository = usuarioRepository;
         this.passwordEncoder = passwordEncoder;
+        this.cotacaoService = cotacaoService;
+        this.apoliceService = apoliceService;
     }
 
     public List<ClienteResponse> listarTodos() {
@@ -53,6 +65,13 @@ public class ClienteService {
         return clienteRepository.buscarPorTermo(termo.trim()).stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    public ClienteHistoricoResponse buscarHistorico(Long clienteId) {
+        ClienteResponse cliente = buscarPorId(clienteId);
+        List<CotacaoResponse> cotacoes = cotacaoService.listar(clienteId, null, null);
+        List<ApoliceResponse> apolices = apoliceService.pesquisar(null, null, clienteId, null);
+        return new ClienteHistoricoResponse(cliente, cotacoes, apolices);
     }
 
     @Transactional

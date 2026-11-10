@@ -56,3 +56,18 @@ Este documento registra detalhadamente as entregas efetuadas no repositório Git
      - `PropostaRepository`: busca por cotação vinculada.
      - DTOs `PropostaRequest` e `PropostaResponse`.
      - `PropostaService` e `PropostaController`: elaboração de condições (EU12), aceite de proposta (EU08) e recusa.
+
+---
+
+## [Commit 4] - Gestão de Apólices, Renovação, Cancelamento, Parcelas e Histórico
+- **Data/Hora:** 2026-11-09 22:00
+- **Mensagem:** `feat: gestao de apolices, controle de vigencia, renovacao, parcelamento e historico do cliente`
+- **O que foi enviado para o Git:**
+  1. `features/apolices`:
+     - Entidade `Apolice` com número de apólice único, vigência (data_inicio, data_termino), valor do prêmio, chave recursiva para renovação (`id_apolice_anterior`) e vínculo 1:N com parcelas.
+     - Entidade `ParcelaPagamento` com valor, vencimento e status (`PENDENTE`, `PAGO`, `ATRASADO`).
+     - Repositórios `ApoliceRepository` e `ParcelaPagamentoRepository` com consultas avançadas de pesquisa e identificação de vencimento em 30 dias.
+     - DTOs `ApoliceRequest`, `ApoliceResponse`, `RenovacaoRequest`, `ParcelaResponse` e `AtualizarParcelaRequest`.
+     - `ApoliceService` e `ApoliceController`: emissão de apólice com geração automática de parcelas, renovação mantendo histórico anterior (RF22, EU16), cancelamento seguro sem deleção física (RF23, EU17), consulta de alertas de vencimento (RF27) e liquidação de parcelas (EU28).
+  2. `features/clientes`:
+     - Adição do endpoint `GET /clientes/{id}/historico` retornando histórico cronológico consolidado de seguros, cotações e apólices (RF24, EU18).

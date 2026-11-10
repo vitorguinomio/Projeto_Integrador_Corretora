@@ -1,5 +1,6 @@
 package com.hcr.corretora.features.clientes;
 
+import com.hcr.corretora.features.clientes.dto.ClienteHistoricoResponse;
 import com.hcr.corretora.features.clientes.dto.ClienteRequest;
 import com.hcr.corretora.features.clientes.dto.ClienteResponse;
 import jakarta.validation.Valid;
@@ -30,6 +31,11 @@ public class ClienteController {
     @GetMapping("/{id}")
     public ResponseEntity<ClienteResponse> buscarPorId(@PathVariable Long id) {
         return ResponseEntity.ok(clienteService.buscarPorId(id));
+    }
+
+    @GetMapping("/{id}/historico")
+    public ResponseEntity<ClienteHistoricoResponse> buscarHistorico(@PathVariable Long id) {
+        return ResponseEntity.ok(clienteService.buscarHistorico(id));
     }
 
     @PostMapping
