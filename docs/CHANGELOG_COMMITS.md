@@ -94,3 +94,22 @@ Este documento registra detalhadamente as entregas efetuadas no repositório Git
      - DTOs `RelatorioClienteItem`, `RelatorioCorretorItem`, `RelatorioSeguroItem` e `RelatorioApoliceItem`.
   5. `core/init/DataInitializer.java`:
      - Inicializador de dados de demonstração com Administrador, Corretores, Clientes, Seguros, Coberturas, Cotações, Propostas, Apólices, Parcelas e Notificações pré-configurados.
+
+---
+
+## [Commit 6] - Interface de Teste e Homologação de Dados (React Frontend)
+- **Data/Hora:** 2026-11-09 23:15
+- **Mensagem:** `feat: telas de teste frontend para homologacao de dados de todas as funcionalidades`
+- **O que foi enviado para o Git:**
+  1. `frontend/src/api.js`: Utilitário de chamadas REST autenticadas com injeção automática de Bearer Token e parsing unificado de mensagens de erro.
+  2. `frontend/src/styles.js`: Sistema de design enxuto e responsivo com badges de status, botões semânticos e modais.
+  3. `frontend/src/components/DashboardTab.jsx`: Tela de métricas gerais e cards de KPI operacionais/financeiros (RF26).
+  4. `frontend/src/components/ClientesTab.jsx`: Tela de gestão de clientes com busca textual, cadastro modal com endereços e telefones, histórico completo e exclusão controlada (RF01 - RF04, RF24).
+  5. `frontend/src/components/CorretoresTab.jsx`: Tela de gestão de corretores com registro SUSEP, edição e alternância de status ativo/inativo (RF05 - RF07).
+  6. `frontend/src/components/SegurosTab.jsx`: Tela de catálogo de tipos de seguros e gestão dinâmica de coberturas (RF09 - RF11, RF17).
+  7. `frontend/src/components/CotacoesTab.jsx`: Tela de solicitação de cotações, elaboração de propostas e avaliação/aceite comercial (EU05 - EU12).
+  8. `frontend/src/components/ApolicesTab.jsx`: Tela de contratos de apólices com filtro por situação, emissão com parcelas automáticas, renovação preservando histórico e cancelamento (RF12 - RF16, RF21 - RF23, EU28).
+  9. `frontend/src/components/AlertasTab.jsx`: Tela de identificação de apólices vencendo em 30 dias e leitura de notificações do usuário (RF27, EU27).
+  10. `frontend/src/components/RelatoriosTab.jsx`: Tela de relatórios consolidados em 4 visões analíticas com opção de impressão/PDF (RF35).
+  11. `frontend/src/components/AuditoriaTab.jsx`: Tela de controle de contas de usuários e visualização da trilha de auditoria (RF28, RF29, RNF22).
+  12. `frontend/src/App.jsx`: Estrutura principal com seletor de perfis de teste rápido (Admin, Corretor, Cliente), modal de login manual e navegação entre abas.
