@@ -3,7 +3,6 @@ import {
   Users,
   Shield,
   FileCheck,
-  TrendingUp,
   AlertTriangle,
   ArrowUpRight,
   Clock,
@@ -34,30 +33,38 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const [statsData, apolicesData, cotacoesData, alertasData, segurosData] = await Promise.all([
+      const [statsData, clientesData, apolicesData, cotacoesData, alertasData, segurosData] = await Promise.all([
         apiFetch('/dashboard/stats').catch(() => null),
+        apiFetch('/clientes').catch(() => []),
         apiFetch('/apolices').catch(() => []),
         apiFetch('/cotacoes').catch(() => []),
         apiFetch('/alertas').catch(() => []),
         apiFetch('/seguros').catch(() => [])
       ]);
 
+      const ativas = (apolicesData || []).filter((a) => {
+        const sit = String(a.situacao || '').toUpperCase();
+        return sit === 'ATIVA' || sit === 'EM_RENOVACAO';
+      });
+      const receita = ativas.reduce(
+        (acc, curr) => acc + Number(curr.valorPremio ?? curr.premio ?? 0),
+        0
+      );
+
       if (statsData) {
         setStats({
-          totalClientes: statsData.totalClientes ?? 12,
-          apolicesAtivas: statsData.apolicesAtivas ?? 0,
+          totalClientes: statsData.totalClientes ?? (clientesData || []).length,
+          apolicesAtivas: statsData.apolicesAtivas ?? ativas.length,
           totalCotacoes: statsData.cotacoesPendentes ?? (cotacoesData || []).length,
-          alertasPendentes: statsData.apolicesProximasVencimento ?? (alertasData || []).length,
-          receitaEstimada: statsData.faturamentoTotalEstimado ?? statsData.receitaEstimada ?? 0
+          alertasPendentes: statsData.apolicesProximasVencimento ?? (alertasData || []).filter((a) => !a.lido).length,
+          receitaEstimada: statsData.faturamentoTotalEstimado ?? statsData.receitaEstimada ?? receita
         });
       } else {
-        const ativas = (apolicesData || []).filter((a) => a.situacao === 'Ativa' || a.situacao === 'Em renovação');
-        const receita = ativas.reduce((acc, curr) => acc + (Number(curr.premio) || 0), 0);
         setStats({
-          totalClientes: 12,
+          totalClientes: (clientesData || []).length,
           apolicesAtivas: ativas.length,
           totalCotacoes: (cotacoesData || []).length,
-          alertasPendentes: (alertasData || []).length,
+          alertasPendentes: (alertasData || []).filter((a) => !a.lido).length,
           receitaEstimada: receita
         });
       }
@@ -74,7 +81,7 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
           return end >= today && end <= next30;
         })
         .sort((a, b) => new Date(a.dataTermino) - new Date(b.dataTermino));
-      setExpiringPolicies(expiring.length > 0 ? expiring : (apolicesData || []).slice(0, 4));
+      setExpiringPolicies(expiring);
 
       setRecentQuotes((cotacoesData || []).slice(0, 5));
       setRecentAlerts((alertasData || []).slice(0, 4));
@@ -102,7 +109,7 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  const firstName = currentUser?.nome ? currentUser.nome.split(' ')[0] : 'Helena';
+  const firstName = currentUser?.nome ? currentUser.nome.split(' ')[0] : 'Usuário';
   const isCorretor = currentRole === 'corretor';
 
   return (
@@ -110,10 +117,10 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
       {/* Page Header */}
       <PageHeader
         eyebrow={isCorretor ? 'Minha carteira' : 'Visão geral da corretora'}
-        title={`Bom dia, ${firstName}.`}
+        title={`Olá, ${firstName}.`}
         description={
           expiringPolicies.length > 0
-            ? `Você tem ${expiringPolicies.length} apólice(s) com atenção no período e ${recentQuotes.length} cotação(ões) registradas.`
+            ? `Você tem ${expiringPolicies.length} apólice(s) vencendo nos próximos 30 dias e ${recentQuotes.length} cotação(ões) recentes.`
             : 'Nenhuma apólice vencendo nos próximos 30 dias. Carteira em dia.'
         }
         actions={
@@ -141,7 +148,7 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
         <StatCard
           label="Clientes"
           value={stats.totalClientes}
-          hint="cadastrados na carteira"
+          hint="cadastrados no PostgreSQL"
           icon={Users}
         />
         <StatCard
@@ -160,7 +167,7 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
         <StatCard
           label="Cotações em aberto"
           value={stats.totalCotacoes}
-          hint={`${stats.alertasPendentes} alertas pendentes`}
+          hint={`${stats.alertasPendentes} alertas de vencimento`}
           icon={FileCheck}
         />
       </div>
@@ -218,7 +225,7 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
                       <div className="flex items-center justify-between sm:justify-end gap-3">
                         <div className="text-right">
                           <p className="font-semibold text-sm tabular text-foreground">
-                            {formatCurrency(apolice.premio)}
+                            {formatCurrency(apolice.valorPremio ?? apolice.premio)}
                           </p>
                           <span className="inline-flex items-center gap-1 text-[0.7rem] font-medium text-warning">
                             <Clock className="size-3" />
@@ -274,7 +281,7 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
                         <StatusBadge status={c.situacao} />
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {c.seguroNome || 'Seguro'} · {c.dataCotacao}
+                        {c.seguroNome || 'Seguro'} · {c.dataCotacao || (c.dataSolicitacao ? c.dataSolicitacao.substring(0, 10) : '')}
                       </p>
                     </div>
                     <button
@@ -293,7 +300,7 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
         {/* Coluna 3 - Distribuição e Alertas Rápidos */}
         <div className="space-y-6">
           {/* Distribuição por Produto */}
-          <SectionCard title="Distribuição por seguro">
+          <SectionCard title="Catálogo de seguros">
             <div className="p-5 space-y-4">
               {insurances.map((seguro, idx) => {
                 const colors = ['bg-primary', 'bg-signal', 'bg-warning', 'bg-success', 'bg-accent'];
@@ -303,13 +310,13 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
                     <div className="flex justify-between text-xs font-medium">
                       <span className="text-foreground">{seguro.nome}</span>
                       <span className="text-muted-foreground">
-                        a partir de {formatCurrency(seguro.premioBase)}
+                        a partir de {formatCurrency(seguro.valorBase ?? seguro.premioBase)}
                       </span>
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                       <div
                         className={`h-full rounded-full ${barColor}`}
-                        style={{ width: `${Math.min(100, 20 + idx * 25)}%` }}
+                        style={{ width: `${Math.min(100, 30 + idx * 20)}%` }}
                       />
                     </div>
                   </div>
@@ -336,14 +343,14 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
                       <AlertTriangle className="size-3 text-warning" />
-                      {alerta.titulo}
+                      {alerta.titulo || 'Notificação'}
                     </span>
                     <span className="text-[0.65rem] text-muted-foreground">
                       {alerta.dataCriacao ? alerta.dataCriacao.substring(0, 10) : 'Hoje'}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground line-clamp-2">
-                    {alerta.mensagem}
+                    {alerta.mensagem || alerta.assunto}
                   </p>
                 </div>
               ))}

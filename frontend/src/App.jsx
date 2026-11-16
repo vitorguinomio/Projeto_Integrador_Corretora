@@ -17,11 +17,22 @@ import AuditoriaTab from './components/AuditoriaTab';
 export default function App() {
   const [activeTab, setActiveTab] = useState('painel');
   const [currentUser, setCurrentUser] = useState(null);
-  const [currentRole, setCurrentRole] = useState('admin'); // 'admin' | 'corretor' | 'cliente'
+  const [currentRole, setCurrentRole] = useState('admin');
   const [unreadAlertsCount, setUnreadAlertsCount] = useState(0);
   const [isInitializing, setIsInitializing] = useState(true);
 
-  // Checa se há token salvo ou perfil padrão para iniciar
+  const refreshAlertsCount = async () => {
+    try {
+      const alertas = await apiFetch('/alertas');
+      if (alertas && Array.isArray(alertas)) {
+        const unread = alertas.filter((a) => !a.lido).length;
+        setUnreadAlertsCount(unread);
+      }
+    } catch {
+      setUnreadAlertsCount(0);
+    }
+  };
+
   useEffect(() => {
     const initSession = async () => {
       const token = getAuthToken();
@@ -36,52 +47,23 @@ export default function App() {
               ? 'corretor'
               : 'cliente'
           );
+          await refreshAlertsCount();
         } catch (e) {
           console.warn('Sessão expirada ou inválida:', e);
           setAuthToken(null);
         }
-      } else {
-        // Para comodidade da homologação direta do protótipo, inicializa logado como Helena (Admin)
-        // se desejar deslogar, basta clicar no ícone de sair no rodapé da sidebar.
-        try {
-          const loginData = await apiFetch('/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({ email: 'admin@hcr.com', senha: 'admin123' })
-          });
-          setAuthToken(loginData.token);
-          setCurrentUser({
-            id: loginData.id,
-            nome: loginData.nome,
-            email: loginData.email,
-            perfilAcesso: loginData.perfil
-          });
-          setCurrentRole('admin');
-        } catch {
-          // segue sem login
-        }
       }
-
-      // Carrega contagem de alertas não lidos
-      try {
-        const alertas = await apiFetch('/alertas');
-        if (alertas && Array.isArray(alertas)) {
-          const unread = alertas.filter((a) => !a.lido).length;
-          setUnreadAlertsCount(unread || 9);
-        }
-      } catch {
-        setUnreadAlertsCount(9);
-      } finally {
-        setIsInitializing(false);
-      }
+      setIsInitializing(false);
     };
 
     initSession();
   }, []);
 
-  const handleLoginSuccess = (userData) => {
+  const handleLoginSuccess = async (userData) => {
     setCurrentUser(userData);
     setCurrentRole(userData.role || 'admin');
     setActiveTab('painel');
+    await refreshAlertsCount();
   };
 
   const handleLogout = () => {
@@ -103,7 +85,6 @@ export default function App() {
     );
   }
 
-  // Se o usuário deslogar, exibe a tela de login idêntica ao Lovable
   if (!currentUser) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }

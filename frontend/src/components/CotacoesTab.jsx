@@ -2,16 +2,20 @@ import React, { useState, useEffect } from 'react';
 import {
   FileCheck,
   Plus,
-  Send,
   CheckCircle2,
   XCircle,
-  FileText,
-  Clock,
-  User,
-  Shield,
-  AlertCircle
+  Clock
 } from 'lucide-react';
-import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal } from './ui/UiBits';
+import {
+  PageHeader,
+  StatusBadge,
+  SectionCard,
+  EmptyState,
+  Modal,
+  FieldError,
+  FeedbackBanner,
+  getErrorInputStyle
+} from './ui/UiBits';
 import { apiFetch } from '../api';
 
 export const CotacoesTab = ({ currentUser, currentRole }) => {
@@ -19,6 +23,7 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
   const [clientes, setClientes] = useState([]);
   const [seguros, setSeguros] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [pageFeedback, setPageFeedback] = useState(null);
 
   // Modais
   const [isNewCotacaoOpen, setIsNewCotacaoOpen] = useState(false);
@@ -31,12 +36,16 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
     seguroId: '',
     informacoesAdicionais: ''
   });
+  const [cotacaoErrors, setCotacaoErrors] = useState({});
+  const [cotacaoBannerError, setCotacaoBannerError] = useState(null);
 
   // Form Nova Proposta
   const [propostaForm, setPropostaForm] = useState({
     premio: '',
-    condicoes: 'Cobertura compreensiva 100% tabela FIPE com assistência 24h e carro reserva por 15 dias.'
+    condicoes: ''
   });
+  const [propostaErrors, setPropostaErrors] = useState({});
+  const [propostaBannerError, setPropostaBannerError] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -55,11 +64,11 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
       setSeguros(segurosData || []);
 
       if (clientesData?.length && segurosData?.length) {
-        setCotacaoForm({
-          clienteId: clientesData[0].id,
-          seguroId: segurosData[0].id,
+        setCotacaoForm((prev) => ({
+          clienteId: prev.clienteId || clientesData[0].id,
+          seguroId: prev.seguroId || segurosData[0].id,
           informacoesAdicionais: ''
-        });
+        }));
       }
     } catch (err) {
       console.error('Erro ao carregar cotações:', err);
@@ -70,15 +79,28 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
 
   const handleCreateCotacao = async (e) => {
     e.preventDefault();
-    if (!cotacaoForm.clienteId || !cotacaoForm.seguroId) {
-      alert('Selecione cliente e seguro.');
+    setCotacaoBannerError(null);
+
+    const errors = {};
+    if (!cotacaoForm.clienteId) errors.clienteId = 'Selecione o cliente solicitante.';
+    if (!cotacaoForm.seguroId) errors.seguroId = 'Selecione o tipo de seguro.';
+    if (!cotacaoForm.informacoesAdicionais || cotacaoForm.informacoesAdicionais.trim().length < 5) {
+      errors.informacoesAdicionais = 'Descreva as informações do bem/risco para a cotação (mínimo 5 caracteres).';
+    }
+
+    setCotacaoErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setCotacaoBannerError('Corrija os campos destacados em vermelho.');
       return;
     }
+
     try {
+      const seg = seguros.find((s) => String(s.id) === String(cotacaoForm.seguroId));
       const payload = {
         clienteId: Number(cotacaoForm.clienteId),
         seguroId: Number(cotacaoForm.seguroId),
-        informacoesAdicionais: cotacaoForm.informacoesAdicionais || 'Solicitação de cotação padrão.'
+        valor: seg?.valorBase ?? seg?.premioBase ?? 0,
+        informacoesAdicionais: cotacaoForm.informacoesAdicionais.trim()
       };
 
       const nova = await apiFetch('/cotacoes', {
@@ -89,33 +111,51 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
       setCotacoes([nova, ...cotacoes]);
       setIsNewCotacaoOpen(false);
       setCotacaoForm((prev) => ({ ...prev, informacoesAdicionais: '' }));
-      alert('Cotação registrada com sucesso!');
+      setCotacaoErrors({});
+      setPageFeedback({
+        type: 'success',
+        message: `Cotação #${nova.id} registrada com sucesso!`
+      });
     } catch (err) {
-      alert(`Erro ao registrar cotação: ${err.message}`);
+      setCotacaoBannerError(err.message || 'Erro ao registrar cotação.');
     }
   };
 
   const handleOpenElaborarProposta = (cotacao) => {
     setSelectedCotacao(cotacao);
-    const seg = seguros.find((s) => s.nome === cotacao.seguroNome);
+    const seg = seguros.find((s) => s.id === cotacao.seguroId || s.nome === cotacao.seguroNome);
     setPropostaForm({
-      premio: seg?.premioBase || 2500,
-      condicoes: 'Cobertura total e assistência 24h com franquia reduzida.'
+      premio: cotacao.valor ?? seg?.valorBase ?? seg?.premioBase ?? '',
+      condicoes: ''
     });
+    setPropostaErrors({});
+    setPropostaBannerError(null);
     setIsNewPropostaOpen(true);
   };
 
   const handleCreateProposta = async (e) => {
     e.preventDefault();
-    if (!propostaForm.premio) {
-      alert('Informe o valor do prêmio.');
+    setPropostaBannerError(null);
+
+    const errors = {};
+    if (!propostaForm.premio || Number(propostaForm.premio) <= 0) {
+      errors.premio = 'Informe um valor de prêmio maior que zero.';
+    }
+    if (!propostaForm.condicoes || propostaForm.condicoes.trim().length < 5) {
+      errors.condicoes = 'Descreva as condições comerciais oferecidas na proposta.';
+    }
+
+    setPropostaErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setPropostaBannerError('Corrija os campos destacados em vermelho.');
       return;
     }
+
     try {
       const payload = {
         cotacaoId: selectedCotacao.id,
         premio: Number(propostaForm.premio),
-        condicoes: propostaForm.condicoes
+        condicoes: propostaForm.condicoes.trim()
       };
 
       const novaProp = await apiFetch('/propostas', {
@@ -123,17 +163,19 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
         body: JSON.stringify(payload)
       });
 
-      // Atualiza na cotação
       const updated = cotacoes.map((c) =>
         c.id === selectedCotacao.id
-          ? { ...c, situacao: 'Em análise', propostas: [...(c.propostas || []), novaProp] }
+          ? { ...c, situacao: 'PROPOSTA_GERADA', propostas: [...(c.propostas || []), novaProp] }
           : c
       );
       setCotacoes(updated);
       setIsNewPropostaOpen(false);
-      alert('Proposta elaborada e enviada para o cliente!');
+      setPageFeedback({
+        type: 'success',
+        message: `Proposta #${novaProp.id} elaborada e enviada para avaliação do cliente!`
+      });
     } catch (err) {
-      alert(`Erro ao criar proposta: ${err.message}`);
+      setPropostaBannerError(err.message || 'Erro ao criar proposta.');
     }
   };
 
@@ -143,14 +185,18 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
       await apiFetch(endpoint, {
         method: 'POST'
       });
-      alert(
-        aceita
-          ? 'Proposta ACEITA! A apólice e suas parcelas foram geradas automaticamente no sistema.'
-          : 'Proposta recusada pelo cliente.'
-      );
+      setPageFeedback({
+        type: 'success',
+        message: aceita
+          ? 'Proposta ACEITA! A apólice e suas parcelas foram geradas automaticamente no PostgreSQL.'
+          : 'Proposta recusada.'
+      });
       loadData();
     } catch (err) {
-      alert(`Erro ao responder proposta: ${err.message}`);
+      setPageFeedback({
+        type: 'error',
+        message: err.message || 'Erro ao responder proposta.'
+      });
     }
   };
 
@@ -170,7 +216,11 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
         description="Da solicitação ao aceite: crie cotações, elabore propostas e acompanhe a resposta do cliente."
         actions={
           <button
-            onClick={() => setIsNewCotacaoOpen(true)}
+            onClick={() => {
+              setCotacaoErrors({});
+              setCotacaoBannerError(null);
+              setIsNewCotacaoOpen(true);
+            }}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
           >
             <Plus className="size-4" />
@@ -178,6 +228,14 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
           </button>
         }
       />
+
+      {pageFeedback && (
+        <FeedbackBanner
+          type={pageFeedback.type}
+          message={pageFeedback.message}
+          onClose={() => setPageFeedback(null)}
+        />
+      )}
 
       {/* Lista de Cotações */}
       {cotacoes.length === 0 ? (
@@ -200,6 +258,7 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
         <div className="grid gap-6">
           {cotacoes.map((cotacao) => {
             const hasProposta = cotacao.propostas && cotacao.propostas.length > 0;
+            const dataStr = cotacao.dataCotacao || (cotacao.dataSolicitacao ? cotacao.dataSolicitacao.substring(0, 10) : '—');
             return (
               <SectionCard
                 key={cotacao.id}
@@ -214,7 +273,7 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
                 action={
                   <span className="text-xs text-muted-foreground flex items-center gap-1">
                     <Clock className="size-3" />
-                    Solicitada em: {cotacao.dataCotacao}
+                    Solicitada em: {dataStr}
                   </span>
                 }
               >
@@ -235,16 +294,16 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
                         Tipo de Seguro
                       </p>
                       <p className="font-medium text-foreground text-sm mt-0.5">
-                        {cotacao.seguroNome || 'Seguro'}
+                        {cotacao.seguroNome || 'Seguro'} ({formatCurrency(cotacao.valor)})
                       </p>
                     </div>
 
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Informações Fornecidas
+                        Corretor Responsável
                       </p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {cotacao.informacoesAdicionais || 'Sem observações adicionais.'}
+                        {cotacao.corretorNome || 'HCR Corretora'}
                       </p>
                     </div>
                   </div>
@@ -255,43 +314,48 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
                       <p className="text-xs font-semibold uppercase tracking-wider text-primary">
                         Propostas Vinculadas
                       </p>
-                      {cotacao.propostas.map((prop) => (
-                        <div
-                          key={prop.id}
-                          className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl border border-border bg-accent/20 gap-3"
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-sm text-foreground">
-                                Proposta #{prop.id} · {formatCurrency(prop.premio)}
-                              </span>
-                              <StatusBadge status={prop.situacao} />
+                      {cotacao.propostas.map((prop) => {
+                        const isPendente = String(prop.situacao || '').toUpperCase() === 'PENDENTE';
+                        return (
+                          <div
+                            key={prop.id}
+                            className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl border border-border bg-accent/20 gap-3"
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-sm text-foreground">
+                                  Proposta #{prop.id} · {formatCurrency(prop.premio ?? prop.valorCotacao ?? cotacao.valor)}
+                                </span>
+                                <StatusBadge status={prop.situacao} />
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {prop.condicoes}
+                              </p>
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {prop.condicoes}
-                            </p>
-                          </div>
 
-                          {prop.situacao === 'Pendente' && (
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleResponderProposta(prop.id, true)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-success-soft text-success border border-success/30 hover:bg-success hover:text-white transition-colors"
-                              >
-                                <CheckCircle2 className="size-3.5" />
-                                Aceitar (Gera apólice)
-                              </button>
-                              <button
-                                onClick={() => handleResponderProposta(prop.id, false)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-danger-soft text-danger border border-danger/30 hover:bg-danger hover:text-white transition-colors"
-                              >
-                                <XCircle className="size-3.5" />
-                                Recusar
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                            {isPendente && (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleResponderProposta(prop.id, true)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-success-soft text-success border border-success/30 hover:bg-success hover:text-white transition-colors"
+                                >
+                                  <CheckCircle2 className="size-3.5" />
+                                  Aceitar (Gera apólice)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleResponderProposta(prop.id, false)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-danger-soft text-danger border border-danger/30 hover:bg-danger hover:text-white transition-colors"
+                                >
+                                  <XCircle className="size-3.5" />
+                                  Recusar
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="flex items-center justify-between pt-2">
@@ -299,6 +363,7 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
                         Nenhuma proposta elaborada ainda para esta solicitação.
                       </p>
                       <button
+                        type="button"
                         onClick={() => handleOpenElaborarProposta(cotacao)}
                         className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold bg-primary text-primary-foreground shadow hover:bg-primary/90 transition-colors"
                       >
@@ -321,14 +386,24 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
         title="Nova cotação"
         subtitle="Selecione o cliente solicitante, ramo de cobertura e detalhes do risco."
       >
-        <form onSubmit={handleCreateCotacao} className="space-y-4">
+        <form onSubmit={handleCreateCotacao} noValidate className="space-y-4">
+          <FeedbackBanner
+            type="error"
+            message={cotacaoBannerError}
+            onClose={() => setCotacaoBannerError(null)}
+          />
+
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
               Cliente *
             </label>
             <select
               value={cotacaoForm.clienteId}
-              onChange={(e) => setCotacaoForm({ ...cotacaoForm, clienteId: e.target.value })}
+              onChange={(e) => {
+                setCotacaoForm({ ...cotacaoForm, clienteId: e.target.value });
+                if (cotacaoErrors.clienteId) setCotacaoErrors({ ...cotacaoErrors, clienteId: null });
+              }}
+              style={getErrorInputStyle(!!cotacaoErrors.clienteId)}
               className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
             >
               {clientes.map((c) => (
@@ -337,6 +412,7 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
                 </option>
               ))}
             </select>
+            <FieldError error={cotacaoErrors.clienteId} />
           </div>
 
           <div>
@@ -345,15 +421,20 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
             </label>
             <select
               value={cotacaoForm.seguroId}
-              onChange={(e) => setCotacaoForm({ ...cotacaoForm, seguroId: e.target.value })}
+              onChange={(e) => {
+                setCotacaoForm({ ...cotacaoForm, seguroId: e.target.value });
+                if (cotacaoErrors.seguroId) setCotacaoErrors({ ...cotacaoErrors, seguroId: null });
+              }}
+              style={getErrorInputStyle(!!cotacaoErrors.seguroId)}
               className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
             >
               {seguros.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.nome} (a partir de R$ {s.premioBase})
+                  {s.nome} (a partir de R$ {s.valorBase ?? s.premioBase})
                 </option>
               ))}
             </select>
+            <FieldError error={cotacaoErrors.seguroId} />
           </div>
 
           <div>
@@ -361,13 +442,19 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
               Informações para a cotação *
             </label>
             <textarea
-              required
               rows={3}
               value={cotacaoForm.informacoesAdicionais}
-              onChange={(e) => setCotacaoForm({ ...cotacaoForm, informacoesAdicionais: e.target.value })}
-              placeholder="Ex: Veículo Toyota Corolla 2024, CEP pernoite 70000-000, motorista 35 anos..."
+              onChange={(e) => {
+                setCotacaoForm({ ...cotacaoForm, informacoesAdicionais: e.target.value });
+                if (cotacaoErrors.informacoesAdicionais) {
+                  setCotacaoErrors({ ...cotacaoErrors, informacoesAdicionais: null });
+                }
+              }}
+              style={getErrorInputStyle(!!cotacaoErrors.informacoesAdicionais)}
+              placeholder="Descreva os dados do bem/segurado para avaliação de risco..."
               className="w-full rounded-md border border-input bg-card p-3 text-sm"
             />
+            <FieldError error={cotacaoErrors.informacoesAdicionais} />
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
@@ -393,9 +480,15 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
         isOpen={isNewPropostaOpen}
         onClose={() => setIsNewPropostaOpen(false)}
         title="Elaborar proposta"
-        subtitle={`Para Cotação #${selectedCotacao?.id} · ${selectedCotacao?.clienteNome}`}
+        subtitle={`Para Cotação #${selectedCotacao?.id || ''} · ${selectedCotacao?.clienteNome || ''}`}
       >
-        <form onSubmit={handleCreateProposta} className="space-y-4">
+        <form onSubmit={handleCreateProposta} noValidate className="space-y-4">
+          <FeedbackBanner
+            type="error"
+            message={propostaBannerError}
+            onClose={() => setPropostaBannerError(null)}
+          />
+
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
               Valor do Prêmio (R$) *
@@ -403,11 +496,15 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
             <input
               type="number"
               step="0.01"
-              required
               value={propostaForm.premio}
-              onChange={(e) => setPropostaForm({ ...propostaForm, premio: e.target.value })}
+              onChange={(e) => {
+                setPropostaForm({ ...propostaForm, premio: e.target.value });
+                if (propostaErrors.premio) setPropostaErrors({ ...propostaErrors, premio: null });
+              }}
+              style={getErrorInputStyle(!!propostaErrors.premio)}
               className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
             />
+            <FieldError error={propostaErrors.premio} />
           </div>
 
           <div>
@@ -415,12 +512,17 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
               Condições Oferecidas *
             </label>
             <textarea
-              required
               rows={3}
               value={propostaForm.condicoes}
-              onChange={(e) => setPropostaForm({ ...propostaForm, condicoes: e.target.value })}
+              onChange={(e) => {
+                setPropostaForm({ ...propostaForm, condicoes: e.target.value });
+                if (propostaErrors.condicoes) setPropostaErrors({ ...propostaErrors, condicoes: null });
+              }}
+              style={getErrorInputStyle(!!propostaErrors.condicoes)}
+              placeholder="Descreva franquia, coberturas inclusas e condições de pagamento..."
               className="w-full rounded-md border border-input bg-card p-3 text-sm"
             />
+            <FieldError error={propostaErrors.condicoes} />
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-border">

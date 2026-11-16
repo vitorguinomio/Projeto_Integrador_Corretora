@@ -174,4 +174,23 @@ Este documento registra detalhadamente as entregas efetuadas no repositório Git
   3. `features/corretores`, `features/seguros`, `features/cotacoes`, `features/propostas`, `features/alertas` e `features/clientes`:
      - Compatibilização completa dos DTOs de requisição/resposta com o frontend e geração automática de apólice e parcelas ao aceitar proposta.
 
+---
+
+## [Commit 10] - Ajustes Frontend: Modal de Parcelas com Quitação e Tipo de Pagamento, Renovação sem Exigir Data Inicial, Erros Dinâmicos em Vermelho com Ícone X e Remoção de Valores de Teste
+- **Data/Hora:** 2026-11-16 09:52
+- **Mensagem:** `feat: modal de parcelas com tipo de pagamento, renovacao mantendo data inicial, erros dinamicos em vermelho com X e ativacao de usuarios`
+- **O que foi enviado para o Git:**
+  1. `frontend/src/components/ui/UiBits.jsx`:
+     - Correção estrutural do componente `Modal` com rolagem interna (`maxHeight: 88vh`), cabeçalho fixo com botão `Fechar`, fechamento por tecla `Escape` e clique no backdrop, eliminando o travamento da tela de parcelas.
+     - Criação dos componentes `FieldError`, `FeedbackBanner`, `getErrorInputStyle` e `validateEmail` para exibição dinâmica de erros em vermelho com ícone `X` (`XCircle`) e descrição detalhada do motivo.
+     - Validação de e-mail garantindo presença de `@` e terminação `.com` ou `.com.br`, aceitando Gmail, Hotmail, Outlook e domínios corporativos.
+  2. `frontend/src/components/ApolicesTab.jsx`:
+     - Tela de parcelas com resumo financeiro, filtros (`Todas`, `Não pagas`, `Pagas`), seletor de **Tipo de Pagamento** (`PIX`, `Boleto Bancário`, `Cartão de Crédito`, `Cartão de Débito`, `Transferência / TED`, `Dinheiro`), botão **Marcar Pago** para parcelas em aberto e botão para reabertura.
+     - Modal de renovação exibindo a data de início original do 1º contrato preservada automaticamente sem exigir novo preenchimento.
+  3. `frontend/src/components/UsuariosTab.jsx`:
+     - Botões funcionais para **Ativar usuário** e **Desativar usuário** integrados ao PostgreSQL, filtros por status (`Todos`, `Ativos`, `Inativos`) e validação dinâmica de erros no cadastro.
+  4. `frontend/src/components/LoginView.jsx`, `ClientesTab.jsx`, `CorretoresTab.jsx`, `SegurosTab.jsx`, `CotacoesTab.jsx`, `DashboardTab.jsx`, `RelatoriosTab.jsx`, `AppShell.jsx` e `App.jsx`:
+     - Remoção de valores de teste fixos no frontend e aplicação de validação dinâmica de erros em vermelho com ícone `X` e motivo.
+
+
 

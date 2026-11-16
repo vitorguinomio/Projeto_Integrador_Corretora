@@ -1,22 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import {
-  UserCog,
   Plus,
-  Shield,
-  Key,
-  Mail,
   Check,
   X,
-  AlertCircle
+  CheckCircle2,
+  XCircle,
+  Power
 } from 'lucide-react';
-import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal } from './ui/UiBits';
+import {
+  PageHeader,
+  StatusBadge,
+  SectionCard,
+  Modal,
+  FieldError,
+  FeedbackBanner,
+  validateEmail,
+  getErrorInputStyle
+} from './ui/UiBits';
 import { apiFetch } from '../api';
 
 export const UsuariosTab = ({ currentUser, currentRole }) => {
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState('TODOS'); // 'TODOS' | 'ATIVOS' | 'INATIVOS'
+  const [togglingId, setTogglingId] = useState(null);
+  const [pageFeedback, setPageFeedback] = useState(null);
 
-  // Modal
+  // Modal Novo Usuário
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [form, setForm] = useState({
     nome: '',
@@ -24,6 +34,9 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
     senha: '',
     perfil: 'CORRETOR'
   });
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [modalBannerError, setModalBannerError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadUsuarios();
@@ -41,18 +54,66 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
     }
   };
 
+  const isUserAtivo = (u) => {
+    if (!u) return false;
+    if (typeof u.status === 'string') {
+      return u.status.toUpperCase() === 'ATIVO';
+    }
+    return Boolean(u.ativo);
+  };
+
+  const validateForm = (currentForm = form) => {
+    const errors = {};
+    if (!currentForm.nome || currentForm.nome.trim().length < 3) {
+      errors.nome = 'Informe o nome completo (mínimo de 3 caracteres).';
+    }
+    const emailErr = validateEmail(currentForm.email);
+    if (emailErr) {
+      errors.email = emailErr;
+    }
+    if (!currentForm.senha || currentForm.senha.length < 6) {
+      errors.senha = 'A senha deve conter no mínimo 6 caracteres.';
+    }
+    return errors;
+  };
+
+  const handleFieldChange = (field, value) => {
+    const updated = { ...form, [field]: value };
+    setForm(updated);
+    if (fieldErrors[field]) {
+      const newErrors = validateForm(updated);
+      setFieldErrors((prev) => ({ ...prev, [field]: newErrors[field] || null }));
+    }
+  };
+
+  const handleFieldBlur = (field) => {
+    const newErrors = validateForm(form);
+    if (newErrors[field]) {
+      setFieldErrors((prev) => ({ ...prev, [field]: newErrors[field] }));
+    }
+  };
+
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
-    if (!form.nome || !form.email || !form.senha) {
-      alert('Preencha os campos obrigatórios (*).');
+    setModalBannerError(null);
+
+    const errors = validateForm(form);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setModalBannerError('Corrija os campos em vermelho antes de criar o usuário.');
       return;
     }
+
     try {
+      setSubmitting(true);
       const payload = {
-        nome: form.nome,
-        email: form.email,
+        nome: form.nome.trim(),
+        loginEmail: form.email.trim().toLowerCase(),
+        email: form.email.trim().toLowerCase(),
         senha: form.senha,
-        perfil: form.perfil
+        perfilAcesso: form.perfil,
+        perfil: form.perfil,
+        status: 'ATIVO'
       };
 
       const novo = await apiFetch('/usuarios', {
@@ -68,23 +129,59 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
         senha: '',
         perfil: 'CORRETOR'
       });
-      alert('Usuário cadastrado com sucesso!');
+      setFieldErrors({});
+      setPageFeedback({
+        type: 'success',
+        message: `Usuário "${novo.nome || novo.loginEmail}" cadastrado e ativado com sucesso!`
+      });
     } catch (err) {
-      alert(`Erro ao cadastrar usuário: ${err.message}`);
+      setModalBannerError(err.message || 'Erro ao cadastrar usuário.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleToggleAtivo = async (usuario) => {
+    const ativoAtual = isUserAtivo(usuario);
+    const novoAtivo = !ativoAtual;
+    const novoStatus = novoAtivo ? 'ATIVO' : 'INATIVO';
+
     try {
-      const novoStatus = !usuario.ativo;
-      await apiFetch(`/usuarios/${usuario.id}/status?ativo=${novoStatus}`, {
-        method: 'PUT'
+      setTogglingId(usuario.id);
+      setPageFeedback(null);
+
+      const atualizado = await apiFetch(`/usuarios/${usuario.id}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          status: novoStatus,
+          ativo: novoAtivo
+        })
       });
-      setUsuarios(
-        usuarios.map((u) => (u.id === usuario.id ? { ...u, ativo: novoStatus } : u))
+
+      setUsuarios((prev) =>
+        prev.map((u) =>
+          u.id === usuario.id
+            ? {
+                ...u,
+                ...atualizado,
+                status: novoStatus,
+                ativo: novoAtivo
+              }
+            : u
+        )
       );
+
+      setPageFeedback({
+        type: 'success',
+        message: `Usuário "${usuario.nome || usuario.loginEmail}" foi ${novoAtivo ? 'ATIVADO' : 'DESATIVADO'} com sucesso!`
+      });
     } catch (err) {
-      alert(`Erro ao atualizar status: ${err.message}`);
+      setPageFeedback({
+        type: 'error',
+        message: err.message || 'Não foi possível alterar o status do usuário.'
+      });
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -100,16 +197,29 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
     { module: 'Relatórios Gerenciais e Auditoria', admin: true, corretor: false, cliente: false }
   ];
 
+  const usuariosAtivosCount = usuarios.filter((u) => isUserAtivo(u)).length;
+  const usuariosInativosCount = usuarios.filter((u) => !isUserAtivo(u)).length;
+
+  const filteredUsuarios = usuarios.filter((u) => {
+    if (statusFilter === 'ATIVOS') return isUserAtivo(u);
+    if (statusFilter === 'INATIVOS') return !isUserAtivo(u);
+    return true;
+  });
+
   return (
     <div className="space-y-6 animate-rise">
       {/* Header */}
       <PageHeader
         eyebrow="Segurança"
         title="Usuários e permissões"
-        description="Controle quem acessa o sistema. Cada perfil enxerga apenas as funções permitidas."
+        description="Controle quem acessa o sistema, ative ou desative contas de acesso e gerencie perfis."
         actions={
           <button
-            onClick={() => setIsNewModalOpen(true)}
+            onClick={() => {
+              setFieldErrors({});
+              setModalBannerError(null);
+              setIsNewModalOpen(true);
+            }}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
           >
             <Plus className="size-4" />
@@ -118,6 +228,51 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
         }
       />
 
+      {pageFeedback && (
+        <FeedbackBanner
+          type={pageFeedback.type}
+          message={pageFeedback.message}
+          onClose={() => setPageFeedback(null)}
+        />
+      )}
+
+      {/* Filtros Rápidos de Status */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setStatusFilter('TODOS')}
+          className={`px-3.5 py-1.5 rounded-md text-xs font-semibold border transition-colors ${
+            statusFilter === 'TODOS'
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-card text-foreground border-border hover:bg-muted'
+          }`}
+        >
+          Todos os usuários ({usuarios.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setStatusFilter('ATIVOS')}
+          className={`px-3.5 py-1.5 rounded-md text-xs font-semibold border transition-colors ${
+            statusFilter === 'ATIVOS'
+              ? 'bg-success-soft text-success border-success'
+              : 'bg-card text-foreground border-border hover:bg-muted'
+          }`}
+        >
+          Ativos ({usuariosAtivosCount})
+        </button>
+        <button
+          type="button"
+          onClick={() => setStatusFilter('INATIVOS')}
+          className={`px-3.5 py-1.5 rounded-md text-xs font-semibold border transition-colors ${
+            statusFilter === 'INATIVOS'
+              ? 'bg-danger-soft text-danger border-danger'
+              : 'bg-card text-foreground border-border hover:bg-muted'
+          }`}
+        >
+          Inativos ({usuariosInativosCount})
+        </button>
+      </div>
+
       {/* Tabela de Usuários */}
       <SectionCard title="Usuários Cadastrados">
         <div className="overflow-x-auto">
@@ -125,27 +280,38 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
             <thead>
               <tr className="border-b border-border bg-muted/40 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <th className="px-5 py-3.5">Usuário</th>
+                <th className="px-5 py-3.5">E-mail de Acesso</th>
                 <th className="px-5 py-3.5">Perfil</th>
-                <th className="px-5 py-3.5">Status</th>
-                <th className="px-5 py-3.5">Data de Criação</th>
-                <th className="px-5 py-3.5 text-right">Ação</th>
+                <th className="px-5 py-3.5">Status da Conta</th>
+                <th className="px-5 py-3.5 text-right">Ativar / Desativar</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
-              {usuarios.map((u) => {
+              {filteredUsuarios.map((u) => {
+                const rawPerfil = u.perfilAcesso || u.perfil || 'CLIENTE';
                 const perfilDisplay =
-                  u.perfil === 'ADMINISTRADOR'
+                  rawPerfil === 'ADMINISTRADOR'
                     ? 'Administrador'
-                    : u.perfil === 'CORRETOR'
+                    : rawPerfil === 'CORRETOR'
                     ? 'Corretor'
                     : 'Cliente';
+                const ativo = isUserAtivo(u);
+                const email = u.email || u.loginEmail || '';
+                const isBusy = togglingId === u.id;
+
                 return (
                   <tr key={u.id} className="hover:bg-accent/40 transition-colors">
                     <td className="px-5 py-4">
-                      <div>
-                        <p className="font-semibold text-foreground text-sm">{u.nome}</p>
-                        <span className="text-xs text-muted-foreground font-mono">{u.email}</span>
-                      </div>
+                      <p className="font-semibold text-foreground text-sm">
+                        {u.nome || email}
+                      </p>
+                      <span className="text-[0.7rem] text-muted-foreground">
+                        ID #{u.id}
+                      </span>
+                    </td>
+
+                    <td className="px-5 py-4 font-mono text-xs text-foreground">
+                      {email}
                     </td>
 
                     <td className="px-5 py-4">
@@ -153,29 +319,37 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
                     </td>
 
                     <td className="px-5 py-4">
-                      <button
-                        onClick={() => handleToggleAtivo(u)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
-                          u.ativo
-                            ? 'bg-success-soft text-success border border-success/30 hover:bg-danger-soft hover:text-danger'
-                            : 'bg-muted text-muted-foreground border border-border hover:bg-success-soft hover:text-success'
-                        }`}
-                      >
-                        <span className="size-1.5 rounded-full bg-current" />
-                        {u.ativo ? 'Ativo' : 'Inativo'}
-                      </button>
-                    </td>
-
-                    <td className="px-5 py-4 text-xs text-muted-foreground">
-                      {u.dataCriacao ? u.dataCriacao.substring(0, 10) : '—'}
+                      <StatusBadge status={ativo ? 'ATIVO' : 'INATIVO'} />
                     </td>
 
                     <td className="px-5 py-4 text-right">
                       <button
+                        type="button"
+                        disabled={isBusy}
                         onClick={() => handleToggleAtivo(u)}
-                        className="text-xs font-medium text-primary hover:underline"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          backgroundColor: ativo ? 'rgba(220, 38, 38, 0.1)' : '#16a34a',
+                          color: ativo ? '#dc2626' : '#ffffff',
+                          border: ativo ? '1px solid rgba(220, 38, 38, 0.35)' : '1px solid #16a34a'
+                        }}
+                        className="transition-opacity hover:opacity-90 disabled:opacity-50"
                       >
-                        {u.ativo ? 'Desativar' : 'Reativar'}
+                        <Power className="size-3.5" />
+                        <span>
+                          {isBusy
+                            ? 'Atualizando...'
+                            : ativo
+                            ? 'Desativar usuário'
+                            : 'Ativar usuário'}
+                        </span>
                       </button>
                     </td>
                   </tr>
@@ -235,49 +409,88 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
         isOpen={isNewModalOpen}
         onClose={() => setIsNewModalOpen(false)}
         title="Novo usuário"
-        subtitle="Crie um usuário com credenciais de acesso e perfil de segurança."
+        subtitle="Crie um usuário com credenciais de acesso (aceita Gmail, Hotmail, Outlook ou e-mail corporativo)."
       >
-        <form onSubmit={handleCreateSubmit} className="space-y-4">
+        <form onSubmit={handleCreateSubmit} noValidate className="space-y-4">
+          <FeedbackBanner
+            type="error"
+            message={modalBannerError}
+            onClose={() => setModalBannerError(null)}
+          />
+
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
               Nome Completo *
             </label>
-            <input
-              type="text"
-              required
-              value={form.nome}
-              onChange={(e) => setForm({ ...form, nome: e.target.value })}
-              placeholder="Ex: Amanda Nogueira"
-              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={form.nome}
+                onChange={(e) => handleFieldChange('nome', e.target.value)}
+                onBlur={() => handleFieldBlur('nome')}
+                placeholder="Informe o nome completo"
+                style={getErrorInputStyle(!!fieldErrors.nome)}
+                className="h-10 w-full rounded-md border border-input bg-card px-3 pr-9 text-sm"
+              />
+              {fieldErrors.nome && (
+                <XCircle
+                  className="size-4 absolute right-3 top-1/2 -translate-y-1/2"
+                  style={{ color: '#dc2626' }}
+                />
+              )}
+            </div>
+            <FieldError error={fieldErrors.nome} />
           </div>
 
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
               E-mail de Acesso *
             </label>
-            <input
-              type="email"
-              required
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="usuario@hcrseguros.com.br"
-              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-            />
+            <div className="relative">
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => handleFieldChange('email', e.target.value)}
+                onBlur={() => handleFieldBlur('email')}
+                placeholder="ex: corretor@empresa.com.br, nome@gmail.com, nome@hotmail.com"
+                style={getErrorInputStyle(!!fieldErrors.email)}
+                className="h-10 w-full rounded-md border border-input bg-card px-3 pr-9 text-sm"
+              />
+              {fieldErrors.email && (
+                <XCircle
+                  className="size-4 absolute right-3 top-1/2 -translate-y-1/2"
+                  style={{ color: '#dc2626' }}
+                />
+              )}
+            </div>
+            <p className="text-[0.7rem] text-muted-foreground mt-1">
+              Deve conter <strong>@</strong> e terminar com <strong>.com</strong> ou <strong>.com.br</strong> (qualquer provedor: empresa, Gmail, Hotmail, etc.).
+            </p>
+            <FieldError error={fieldErrors.email} />
           </div>
 
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
-              Senha Provisória *
+              Senha de Acesso *
             </label>
-            <input
-              type="password"
-              required
-              value={form.senha}
-              onChange={(e) => setForm({ ...form, senha: e.target.value })}
-              placeholder="Mínimo 6 caracteres"
-              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-            />
+            <div className="relative">
+              <input
+                type="password"
+                value={form.senha}
+                onChange={(e) => handleFieldChange('senha', e.target.value)}
+                onBlur={() => handleFieldBlur('senha')}
+                placeholder="Mínimo de 6 caracteres"
+                style={getErrorInputStyle(!!fieldErrors.senha)}
+                className="h-10 w-full rounded-md border border-input bg-card px-3 pr-9 text-sm"
+              />
+              {fieldErrors.senha && (
+                <XCircle
+                  className="size-4 absolute right-3 top-1/2 -translate-y-1/2"
+                  style={{ color: '#dc2626' }}
+                />
+              )}
+            </div>
+            <FieldError error={fieldErrors.senha} />
           </div>
 
           <div>
@@ -305,9 +518,10 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90"
+              disabled={submitting}
+              className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90 disabled:opacity-50"
             >
-              Criar usuário
+              {submitting ? 'Criando...' : 'Criar usuário'}
             </button>
           </div>
         </form>

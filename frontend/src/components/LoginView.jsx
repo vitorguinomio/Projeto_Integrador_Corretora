@@ -1,43 +1,72 @@
 import React, { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ShieldCheck, XCircle } from 'lucide-react';
 import { apiFetch, setAuthToken } from '../api';
+import {
+  validateEmail,
+  FieldError,
+  FeedbackBanner,
+  getErrorInputStyle
+} from './ui/UiBits';
 
 export const LoginView = ({ onLoginSuccess }) => {
-  const roleProfiles = [
-    { role: 'admin', label: 'Administrador', email: 'admin@hcr.com', defaultPass: 'admin123', name: 'Dalton Rezende' },
-    { role: 'corretor', label: 'Corretor', email: 'carlos.silva@corretora.com', defaultPass: 'corretor123', name: 'Carlos Silva' },
-    { role: 'cliente', label: 'Cliente', email: 'joao.silva@email.com', defaultPass: 'cliente123', name: 'João Pereira da Silva' }
-  ];
-
-  const [selectedRole, setSelectedRole] = useState(roleProfiles[0].role);
-  const [email, setEmail] = useState(roleProfiles[0].email);
-  const [senha, setSenha] = useState(roleProfiles[0].defaultPass);
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [bannerError, setBannerError] = useState(null);
 
-  const handleSelectRole = (profile) => {
-    setSelectedRole(profile.role);
-    setEmail(profile.email);
-    setSenha(profile.defaultPass);
-    setError(null);
+  const handleEmailChange = (val) => {
+    setEmail(val);
+    if (fieldErrors.email) {
+      const err = validateEmail(val);
+      setFieldErrors((prev) => ({ ...prev, email: err }));
+    }
+    if (bannerError) setBannerError(null);
+  };
+
+  const handleEmailBlur = () => {
+    if (email.trim().length > 0) {
+      const err = validateEmail(email);
+      setFieldErrors((prev) => ({ ...prev, email: err }));
+    }
+  };
+
+  const handleSenhaChange = (val) => {
+    setSenha(val);
+    if (fieldErrors.senha) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        senha: val.length >= 6 ? null : 'A senha deve conter no mínimo 6 caracteres.'
+      }));
+    }
+    if (bannerError) setBannerError(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
+    setBannerError(null);
 
-    if (!email.includes('@') || senha.length < 6) {
-      setError('Informe um e-mail válido e uma senha com no mínimo 6 caracteres.');
+    const errors = {};
+    const emailErr = validateEmail(email);
+    if (emailErr) {
+      errors.email = emailErr;
+    }
+    if (!senha || senha.length < 6) {
+      errors.senha = 'Informe uma senha válida com no mínimo 6 caracteres.';
+    }
+
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setBannerError('Verifique os campos destacados em vermelho para acessar o sistema.');
       return;
     }
 
     setLoading(true);
     try {
-      // Tenta login oficial via backend /api/auth/login
       const data = await apiFetch('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, senha })
+        body: JSON.stringify({ email: email.trim().toLowerCase(), senha })
       });
 
       setAuthToken(data.token);
@@ -46,33 +75,27 @@ export const LoginView = ({ onLoginSuccess }) => {
         nome: data.nome,
         email: data.email,
         perfil: data.perfil,
-        role: data.perfil === 'ADMINISTRADOR' ? 'admin' : data.perfil === 'CORRETOR' ? 'corretor' : 'cliente'
+        perfilAcesso: data.perfil,
+        role:
+          data.perfil === 'ADMINISTRADOR'
+            ? 'admin'
+            : data.perfil === 'CORRETOR'
+            ? 'corretor'
+            : 'cliente'
       });
     } catch (err) {
-      // Se falhar a autenticação no backend (por exemplo, senha customizada da demo),
-      // verifica se é um dos perfis simulados para garantir continuidade fluida:
-      const fallbackProfile = roleProfiles.find((p) => p.email.toLowerCase() === email.toLowerCase());
-      if (fallbackProfile) {
-        // Tenta com a senha padrão do admin no backend se for admin
-        try {
-          const fallbackData = await apiFetch('/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({ email: 'admin@hcr.com', senha: 'admin123' })
-          });
-          setAuthToken(fallbackData.token);
-          onLoginSuccess({
-            id: fallbackProfile.role === 'admin' ? 1 : 2,
-            nome: fallbackProfile.name,
-            email: fallbackProfile.email,
-            perfil: fallbackProfile.role === 'admin' ? 'ADMINISTRADOR' : fallbackProfile.role === 'corretor' ? 'CORRETOR' : 'CLIENTE',
-            role: fallbackProfile.role
-          });
-          return;
-        } catch {
-          // segue para exibir erro
-        }
+      const msg = err.message || 'Credenciais inválidas. Verifique o e-mail e a senha digitados.';
+      setBannerError(msg);
+      if (msg.toLowerCase().includes('senha')) {
+        setFieldErrors({ senha: msg });
+      } else if (msg.toLowerCase().includes('e-mail') || msg.toLowerCase().includes('desativado')) {
+        setFieldErrors({ email: msg });
+      } else {
+        setFieldErrors({
+          email: 'Confira o e-mail informado.',
+          senha: 'Confira a senha informada.'
+        });
       }
-      setError(err.message || 'Credenciais inválidas. Verifique o e-mail e a senha digitados.');
     } finally {
       setLoading(false);
     }
@@ -103,7 +126,7 @@ export const LoginView = ({ onLoginSuccess }) => {
 
       {/* Coluna Direita - Formulário de Acesso */}
       <div className="flex items-center justify-center px-6 py-12">
-        <form onSubmit={handleSubmit} className="w-full max-w-sm animate-rise">
+        <form onSubmit={handleSubmit} noValidate className="w-full max-w-sm animate-rise">
           <div className="mb-8">
             <span className="inline-flex size-12 items-center justify-center rounded-xl bg-gradient-signal font-display text-xl font-bold text-signal-foreground shadow-lift">
               H
@@ -114,79 +137,63 @@ export const LoginView = ({ onLoginSuccess }) => {
             Acesse sua conta
           </h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Entre com as credenciais cadastradas na HCR Corretora.
+            Entre com seu e-mail corporativo ou pessoal cadastrado no PostgreSQL.
           </p>
 
-          {/* Abas Rápidas de Perfis */}
-          <div
-            className="mt-8 grid grid-cols-3 gap-1 rounded-lg border border-border bg-muted p-1"
-            role="tablist"
-            aria-label="Perfil de acesso"
-          >
-            {roleProfiles.map((p) => {
-              const isSelected = selectedRole === p.role;
-              return (
-                <button
-                  key={p.role}
-                  type="button"
-                  role="tab"
-                  aria-selected={isSelected}
-                  onClick={() => handleSelectRole(p)}
-                  className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-all ${
-                    isSelected
-                      ? 'bg-card text-foreground shadow-card'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
-          </div>
-
           <div className="mt-6 space-y-4">
+            <FeedbackBanner
+              type="error"
+              title="Falha na autenticação"
+              message={bannerError}
+              onClose={() => setBannerError(null)}
+            />
+
             {/* Campo E-mail */}
             <div className="space-y-1.5">
               <label htmlFor="email" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                E-mail
+                E-mail de Acesso *
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <input
                   id="email"
                   type="email"
-                  required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="h-11 w-full rounded-md border border-input bg-card pl-9 pr-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                  placeholder="exemplo@hcrseguros.com.br"
+                  onChange={(e) => handleEmailChange(e.target.value)}
+                  onBlur={handleEmailBlur}
+                  style={getErrorInputStyle(!!fieldErrors.email)}
+                  className="h-11 w-full rounded-md border border-input bg-card pl-9 pr-9 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  placeholder="usuario@hcr.com.br ou nome@gmail.com"
                 />
+                {fieldErrors.email && (
+                  <XCircle
+                    className="size-4 absolute right-3 top-1/2 -translate-y-1/2"
+                    style={{ color: '#dc2626' }}
+                  />
+                )}
               </div>
+              <p className="text-[0.68rem] text-muted-foreground">
+                Formatos aceitos: corporativo (ex: @hcr.com.br), Gmail, Hotmail, Outlook (.com ou .com.br).
+              </p>
+              <FieldError error={fieldErrors.email} />
             </div>
 
             {/* Campo Senha */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label htmlFor="senha" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Senha
+                  Senha *
                 </label>
-                <button
-                  type="button"
-                  onClick={() => alert('Para redefinição de senha, contate o administrador em admin@hcr.com.')}
-                  className="text-xs font-semibold text-primary hover:underline"
-                >
-                  Esqueci minha senha
-                </button>
               </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <input
                   id="senha"
                   type={showPassword ? 'text' : 'password'}
-                  required
                   value={senha}
-                  onChange={(e) => setSenha(e.target.value)}
+                  onChange={(e) => handleSenhaChange(e.target.value)}
                   placeholder="••••••••"
+                  style={getErrorInputStyle(!!fieldErrors.senha)}
                   className="h-11 w-full rounded-md border border-input bg-card pl-9 pr-10 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                 />
                 <button
@@ -198,27 +205,22 @@ export const LoginView = ({ onLoginSuccess }) => {
                   {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>
+              <FieldError error={fieldErrors.senha} />
             </div>
           </div>
-
-          {error && (
-            <div className="mt-4 rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-danger border border-danger/20 flex items-center gap-2">
-              <span>{error}</span>
-            </div>
-          )}
 
           <button
             type="submit"
             disabled={loading}
             className="mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground font-semibold shadow hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
-            {loading ? 'Entrando...' : 'Entrar'}
+            {loading ? 'Autenticando...' : 'Entrar no Sistema'}
           </button>
 
           <div className="mt-6 rounded-lg border border-border/80 bg-accent/40 p-3 text-xs text-muted-foreground flex items-start gap-2">
             <ShieldCheck className="size-4 text-primary shrink-0 mt-0.5" />
             <span>
-              <strong>Ambiente Integrado:</strong> Autenticação via JWT (HMAC-SHA256) conectada à base de dados PostgreSQL da corretora.
+              <strong>Ambiente PostgreSQL Integrado:</strong> Autenticação via JWT (HMAC-SHA256) validando usuários ativos diretamente no banco de dados.
             </span>
           </div>
         </form>

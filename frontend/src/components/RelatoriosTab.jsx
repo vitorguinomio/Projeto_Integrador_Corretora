@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
-  BarChart3,
   Download,
   Users,
   Shield,
   ArrowUpRight,
-  PieChart,
-  Percent,
-  CheckCircle2
+  Percent
 } from 'lucide-react';
 import { PageHeader, StatCard, SectionCard } from './ui/UiBits';
 import { apiFetch } from '../api';
@@ -46,18 +43,32 @@ export const RelatoriosTab = ({ currentUser, currentRole }) => {
     }
   };
 
-  const ativas = apolices.filter((a) => a.situacao === 'Ativa' || a.situacao === 'Em renovação');
-  const carteiraAtiva = ativas.reduce((acc, curr) => acc + (Number(curr.premio) || 0), 0);
+  const ativas = apolices.filter((a) => {
+    const s = String(a.situacao || '').toUpperCase();
+    return s === 'ATIVA' || s === 'EM_RENOVACAO';
+  });
+  const carteiraAtiva = ativas.reduce((acc, curr) => acc + Number(curr.valorPremio ?? curr.premio ?? 0), 0);
 
-  // Conversão de propostas
+  // Conversão de propostas real do banco
   const todasPropostas = cotacoes.flatMap((c) => c.propostas || []);
-  const respondidas = todasPropostas.filter((p) => p.situacao !== 'Pendente');
-  const aceitas = respondidas.filter((p) => p.situacao === 'Aceita');
-  const taxaConversao = respondidas.length > 0 ? Math.round((aceitas.length / respondidas.length) * 100) : 67;
+  const respondidas = todasPropostas.filter((p) => String(p.situacao || '').toUpperCase() !== 'PENDENTE');
+  const aceitas = respondidas.filter((p) => String(p.situacao || '').toUpperCase() === 'ACEITA');
+  const taxaConversao = respondidas.length > 0 ? Math.round((aceitas.length / respondidas.length) * 100) : 0;
 
   // Situação das apólices
   const situacoesMap = apolices.reduce((acc, curr) => {
-    acc[curr.situacao] = (acc[curr.situacao] || 0) + 1;
+    const raw = String(curr.situacao || 'ATIVA').toUpperCase();
+    const label =
+      raw === 'ATIVA'
+        ? 'Ativa'
+        : raw === 'EM_RENOVACAO'
+        ? 'Em renovação'
+        : raw === 'CANCELADA'
+        ? 'Cancelada'
+        : raw === 'VENCIDA'
+        ? 'Vencida'
+        : curr.situacao;
+    acc[label] = (acc[label] || 0) + 1;
     return acc;
   }, {});
 
@@ -71,7 +82,7 @@ export const RelatoriosTab = ({ currentUser, currentRole }) => {
   // Carteira por corretor
   const carteiraCorretores = corretores.map((c) => {
     const aps = ativas.filter((a) => a.corretorNome === c.nome || a.corretorId === c.id);
-    const total = aps.reduce((sum, item) => sum + (Number(item.premio) || 0), 0);
+    const total = aps.reduce((sum, item) => sum + Number(item.valorPremio ?? item.premio ?? 0), 0);
     return {
       nome: c.nome.split(' ')[0],
       nomeCompleto: c.nome,
@@ -83,15 +94,17 @@ export const RelatoriosTab = ({ currentUser, currentRole }) => {
   const maxCorretorPremio = Math.max(...carteiraCorretores.map((c) => c.premio), 1);
 
   // Prêmios por seguro
-  const premiosPorSeguro = seguros.map((s) => {
-    const aps = ativas.filter((a) => a.seguroNome === s.nome || a.seguroId === s.id);
-    const total = aps.reduce((sum, item) => sum + (Number(item.premio) || 0), 0);
-    return {
-      nome: s.nome,
-      premio: total,
-      qtdApolices: aps.length
-    };
-  }).sort((a, b) => b.premio - a.premio);
+  const premiosPorSeguro = seguros
+    .map((s) => {
+      const aps = ativas.filter((a) => a.seguroNome === s.nome || a.seguroId === s.id);
+      const total = aps.reduce((sum, item) => sum + Number(item.valorPremio ?? item.premio ?? 0), 0);
+      return {
+        nome: s.nome,
+        premio: total,
+        qtdApolices: aps.length
+      };
+    })
+    .sort((a, b) => b.premio - a.premio);
 
   const maxSeguroPremio = Math.max(...premiosPorSeguro.map((s) => s.premio), 1);
 
@@ -114,7 +127,7 @@ export const RelatoriosTab = ({ currentUser, currentRole }) => {
         a.dataInicio || '',
         a.dataTermino || '',
         a.situacao || '',
-        a.premio || 0
+        a.valorPremio ?? a.premio ?? 0
       ])
     ];
 
@@ -158,7 +171,7 @@ export const RelatoriosTab = ({ currentUser, currentRole }) => {
         <StatCard
           label="Clientes"
           value={clientes.length}
-          hint={`${clientes.filter((c) => c.tipo === 'PJ' || c.cpfCnpj?.length > 14).length} pessoas jurídicas`}
+          hint={`${clientes.filter((c) => c.tipo === 'PJ' || (c.cpfCnpj || '').replace(/\D/g, '').length > 11).length} pessoas jurídicas`}
           icon={Users}
         />
         <StatCard

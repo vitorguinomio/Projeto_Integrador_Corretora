@@ -1,21 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Users,
   Search,
   Plus,
   Eye,
   Trash2,
   Phone,
   Mail,
-  MapPin,
   Building,
   User,
   Shield,
   FileCheck,
-  Calendar,
-  AlertCircle
+  XCircle
 } from 'lucide-react';
-import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal, CodeText } from './ui/UiBits';
+import {
+  PageHeader,
+  StatusBadge,
+  SectionCard,
+  EmptyState,
+  Modal,
+  FieldError,
+  FeedbackBanner,
+  validateEmail,
+  getErrorInputStyle
+} from './ui/UiBits';
 import { apiFetch } from '../api';
 
 export const ClientesTab = ({ currentUser, currentRole }) => {
@@ -25,6 +32,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
   const [search, setSearch] = useState('');
   const [tipoFilter, setTipoFilter] = useState('TODOS');
   const [selectedCorretorId, setSelectedCorretorId] = useState('');
+  const [pageFeedback, setPageFeedback] = useState(null);
 
   // Modais
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -37,6 +45,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
     cpfCnpj: '',
     tipo: 'PF',
     email: '',
+    dataNasc: '',
     telefone: '',
     tipoTelefone: 'CELULAR',
     logradouro: '',
@@ -45,10 +54,10 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
     cidade: '',
     uf: 'DF',
     cep: '',
-    dataNasc: '1990-01-01',
     corretorId: ''
   });
-  const [formError, setFormError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [modalBannerError, setModalBannerError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -80,7 +89,11 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
       setSelectedClienteHistory(cliente);
       const fullHistory = await apiFetch(`/clientes/${cliente.id}/historico`).catch(() => null);
       if (fullHistory) {
-        setSelectedClienteHistory(fullHistory);
+        setSelectedClienteHistory({
+          ...cliente,
+          ...(fullHistory.cliente || {}),
+          ...fullHistory
+        });
       }
     } catch (err) {
       console.error('Erro ao buscar histórico:', err);
@@ -90,34 +103,76 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
   };
 
   const handleDelete = async (id, nome) => {
-    if (!window.confirm(`Deseja realmente excluir o cliente "${nome}"? Esta ação removerá registros vinculados se permitido.`)) {
+    if (!window.confirm(`Deseja realmente excluir o cliente "${nome}"?`)) {
       return;
     }
     try {
       await apiFetch(`/clientes/${id}`, { method: 'DELETE' });
       setClientes(clientes.filter((c) => c.id !== id));
-      alert('Cliente excluído com sucesso.');
+      setPageFeedback({
+        type: 'success',
+        message: `Cliente "${nome}" excluído com sucesso.`
+      });
     } catch (err) {
-      alert(`Não foi possível excluir o cliente: ${err.message}`);
+      setPageFeedback({
+        type: 'error',
+        message: err.message || 'Não foi possível excluir o cliente.'
+      });
+    }
+  };
+
+  const validateForm = (current = form) => {
+    const errors = {};
+    if (!current.nome || current.nome.trim().length < 3) {
+      errors.nome = 'Informe o nome completo ou razão social (mínimo 3 caracteres).';
+    }
+    const digits = (current.cpfCnpj || '').replace(/\D/g, '');
+    if (current.tipo === 'PF' && digits.length !== 11) {
+      errors.cpfCnpj = 'CPF inválido: deve conter exatamente 11 dígitos numéricos.';
+    } else if (current.tipo === 'PJ' && digits.length !== 14) {
+      errors.cpfCnpj = 'CNPJ inválido: deve conter exatamente 14 dígitos numéricos.';
+    }
+    const emailErr = validateEmail(current.email);
+    if (emailErr) {
+      errors.email = emailErr;
+    }
+    return errors;
+  };
+
+  const handleFieldChange = (field, value) => {
+    const updated = { ...form, [field]: value };
+    setForm(updated);
+    if (fieldErrors[field]) {
+      const errs = validateForm(updated);
+      setFieldErrors((prev) => ({ ...prev, [field]: errs[field] || null }));
+    }
+  };
+
+  const handleFieldBlur = (field) => {
+    const errs = validateForm(form);
+    if (errs[field]) {
+      setFieldErrors((prev) => ({ ...prev, [field]: errs[field] }));
     }
   };
 
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
-    setFormError(null);
+    setModalBannerError(null);
 
-    if (!form.nome || !form.cpfCnpj || !form.email) {
-      setFormError('Por favor preencha nome, CPF/CNPJ e e-mail.');
+    const errors = validateForm(form);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setModalBannerError('Corrija os campos destacados em vermelho antes de salvar o cliente.');
       return;
     }
 
     try {
       setSubmitting(true);
       const payload = {
-        nome: form.nome,
-        cpfCnpj: form.cpfCnpj.replace(/\D/g, ''),
+        nome: form.nome.trim(),
+        cpfCnpj: form.cpfCnpj.trim(),
         tipo: form.tipo,
-        email: form.email,
+        email: form.email.trim().toLowerCase(),
         dataNasc: form.dataNasc || '1990-01-01',
         corretorId: form.corretorId ? Number(form.corretorId) : null,
         telefones: form.telefone
@@ -127,8 +182,8 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
           ? [
               {
                 logradouro: form.logradouro,
-                numero: form.numero,
-                bairro: form.bairro,
+                numero: form.numero || 'S/N',
+                bairro: form.bairro || 'Plano Piloto',
                 cidade: form.cidade || 'Brasília',
                 estado: form.uf || 'DF',
                 cep: form.cep || '70000-000'
@@ -149,6 +204,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
         cpfCnpj: '',
         tipo: 'PF',
         email: '',
+        dataNasc: '',
         telefone: '',
         tipoTelefone: 'CELULAR',
         logradouro: '',
@@ -159,9 +215,13 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
         cep: '',
         corretorId: corretores[0]?.id || ''
       });
-      alert('Cliente cadastrado com sucesso!');
+      setFieldErrors({});
+      setPageFeedback({
+        type: 'success',
+        message: `Cliente "${novo.nome}" cadastrado com sucesso!`
+      });
     } catch (err) {
-      setFormError(err.message || 'Erro ao cadastrar cliente.');
+      setModalBannerError(err.message || 'Erro ao cadastrar cliente.');
     } finally {
       setSubmitting(false);
     }
@@ -174,10 +234,13 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
       (c.email && c.email.toLowerCase().includes(search.toLowerCase())) ||
       (c.id && String(c.id).includes(search));
 
+    const digits = (c.cpfCnpj || '').replace(/\D/g, '');
+    const isPj = c.tipo === 'PJ' || digits.length > 11;
+
     const matchesTipo =
       tipoFilter === 'TODOS' ||
-      (tipoFilter === 'PF' && (c.tipo === 'PF' || c.cpfCnpj?.length <= 14)) ||
-      (tipoFilter === 'PJ' && (c.tipo === 'PJ' || c.cpfCnpj?.length > 14));
+      (tipoFilter === 'PF' && !isPj) ||
+      (tipoFilter === 'PJ' && isPj);
 
     const matchesCorretor =
       !selectedCorretorId || String(c.corretorId) === String(selectedCorretorId);
@@ -216,7 +279,11 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
         description="Pesquise por nome, CPF/CNPJ, e-mail ou código. Clique em um cliente para ver o histórico completo."
         actions={
           <button
-            onClick={() => setIsNewModalOpen(true)}
+            onClick={() => {
+              setFieldErrors({});
+              setModalBannerError(null);
+              setIsNewModalOpen(true);
+            }}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
           >
             <Plus className="size-4" />
@@ -224,6 +291,14 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
           </button>
         }
       />
+
+      {pageFeedback && (
+        <FeedbackBanner
+          type={pageFeedback.type}
+          message={pageFeedback.message}
+          onClose={() => setPageFeedback(null)}
+        />
+      )}
 
       {/* Barra de Filtros e Busca */}
       <div className="flex flex-col md:flex-row gap-3">
@@ -293,7 +368,8 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
               </thead>
               <tbody className="divide-y divide-border/60">
                 {filteredClientes.map((cliente) => {
-                  const isPj = cliente.tipo === 'PJ' || cliente.cpfCnpj?.length > 14;
+                  const digits = (cliente.cpfCnpj || '').replace(/\D/g, '');
+                  const isPj = cliente.tipo === 'PJ' || digits.length > 11;
                   return (
                     <tr
                       key={cliente.id}
@@ -329,7 +405,9 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
                         {cliente.telefones && cliente.telefones.length > 0 && (
                           <div className="flex items-center gap-1.5 text-muted-foreground">
                             <Phone className="size-3 text-primary" />
-                            <span>{cliente.telefones[0].numero}</span>
+                            <span>
+                              ({cliente.telefones[0].ddd || '61'}) {cliente.telefones[0].numero}
+                            </span>
                           </div>
                         )}
                       </td>
@@ -340,7 +418,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
 
                       <td className="px-5 py-4 text-center">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-accent text-accent-foreground">
-                          {cliente.totalApolices || (cliente.apolices ? cliente.apolices.length : 0)}
+                          {cliente.totalApolices ?? (cliente.apolices ? cliente.apolices.length : 0)}
                         </span>
                       </td>
 
@@ -350,6 +428,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
+                            type="button"
                             onClick={() => handleOpenHistory(cliente)}
                             title="Ver histórico completo"
                             className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
@@ -357,6 +436,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
                             <Eye className="size-4" />
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleDelete(cliente.id, cliente.nome)}
                             title="Excluir cliente"
                             className="p-1.5 rounded-md hover:bg-danger-soft text-muted-foreground hover:text-danger transition-colors"
@@ -382,13 +462,12 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
         subtitle="Preencha os dados cadastrais, endereço e contato do novo cliente."
         maxWidth="max-w-2xl"
       >
-        <form onSubmit={handleCreateSubmit} className="space-y-4">
-          {formError && (
-            <div className="rounded-lg bg-danger-soft p-3 text-sm text-danger border border-danger/20 flex items-center gap-2">
-              <AlertCircle className="size-4 shrink-0" />
-              <span>{formError}</span>
-            </div>
-          )}
+        <form onSubmit={handleCreateSubmit} noValidate className="space-y-4">
+          <FeedbackBanner
+            type="error"
+            message={modalBannerError}
+            onClose={() => setModalBannerError(null)}
+          />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -397,7 +476,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
               </label>
               <select
                 value={form.tipo}
-                onChange={(e) => setForm({ ...form, tipo: e.target.value })}
+                onChange={(e) => handleFieldChange('tipo', e.target.value)}
                 className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
                 <option value="PF">Pessoa Física (CPF)</option>
@@ -409,14 +488,24 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
                 CPF / CNPJ *
               </label>
-              <input
-                type="text"
-                required
-                value={form.cpfCnpj}
-                onChange={(e) => setForm({ ...form, cpfCnpj: e.target.value })}
-                placeholder={form.tipo === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
-                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={form.cpfCnpj}
+                  onChange={(e) => handleFieldChange('cpfCnpj', e.target.value)}
+                  onBlur={() => handleFieldBlur('cpfCnpj')}
+                  placeholder={form.tipo === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
+                  style={getErrorInputStyle(!!fieldErrors.cpfCnpj)}
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 pr-9 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                {fieldErrors.cpfCnpj && (
+                  <XCircle
+                    className="size-4 absolute right-3 top-1/2 -translate-y-1/2"
+                    style={{ color: '#dc2626' }}
+                  />
+                )}
+              </div>
+              <FieldError error={fieldErrors.cpfCnpj} />
             </div>
           </div>
 
@@ -424,31 +513,65 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
               Nome Completo / Razão Social *
             </label>
-            <input
-              type="text"
-              required
-              value={form.nome}
-              onChange={(e) => setForm({ ...form, nome: e.target.value })}
-              placeholder="Ex: Carlos Eduardo de Souza"
-              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={form.nome}
+                onChange={(e) => handleFieldChange('nome', e.target.value)}
+                onBlur={() => handleFieldBlur('nome')}
+                placeholder="Nome completo ou razão social"
+                style={getErrorInputStyle(!!fieldErrors.nome)}
+                className="h-10 w-full rounded-md border border-input bg-card px-3 pr-9 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              {fieldErrors.nome && (
+                <XCircle
+                  className="size-4 absolute right-3 top-1/2 -translate-y-1/2"
+                  style={{ color: '#dc2626' }}
+                />
+              )}
+            </div>
+            <FieldError error={fieldErrors.nome} />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
                 E-mail *
               </label>
+              <div className="relative">
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => handleFieldChange('email', e.target.value)}
+                  onBlur={() => handleFieldBlur('email')}
+                  placeholder="cliente@gmail.com ou contato@empresa.com.br"
+                  style={getErrorInputStyle(!!fieldErrors.email)}
+                  className="h-10 w-full rounded-md border border-input bg-card px-3 pr-9 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                {fieldErrors.email && (
+                  <XCircle
+                    className="size-4 absolute right-3 top-1/2 -translate-y-1/2"
+                    style={{ color: '#dc2626' }}
+                  />
+                )}
+              </div>
+              <FieldError error={fieldErrors.email} />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+                Data de Nasc. / Fundação
+              </label>
               <input
-                type="email"
-                required
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="cliente@email.com"
+                type="date"
+                value={form.dataNasc}
+                onChange={(e) => setForm({ ...form, dataNasc: e.target.value })}
                 className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
+          </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
                 Telefone
@@ -457,9 +580,26 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
                 type="text"
                 value={form.telefone}
                 onChange={(e) => setForm({ ...form, telefone: e.target.value })}
-                placeholder="(61) 99888-7766"
+                placeholder="(61) 90000-0000"
                 className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+                Corretor Responsável
+              </label>
+              <select
+                value={form.corretorId}
+                onChange={(e) => setForm({ ...form, corretorId: e.target.value })}
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                {corretores.map((corretor) => (
+                  <option key={corretor.id} value={corretor.id}>
+                    {corretor.nome} ({corretor.registroSusep || corretor.dadosProfissionais})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -471,7 +611,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
               <div className="col-span-2">
                 <input
                   type="text"
-                  placeholder="Logradouro (Rua, Av.)"
+                  placeholder="Logradouro (Rua, Av., Quadra)"
                   value={form.logradouro}
                   onChange={(e) => setForm({ ...form, logradouro: e.target.value })}
                   className="h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
@@ -518,23 +658,6 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
-              Corretor Responsável
-            </label>
-            <select
-              value={form.corretorId}
-              onChange={(e) => setForm({ ...form, corretorId: e.target.value })}
-              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              {corretores.map((corretor) => (
-                <option key={corretor.id} value={corretor.id}>
-                  {corretor.nome} (SUSEP {corretor.registroSusep})
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
               type="button"
@@ -554,13 +677,13 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
         </form>
       </Modal>
 
-      {/* Drawer / Modal Histórico Completo */}
+      {/* Modal Histórico Completo */}
       <Modal
         isOpen={!!selectedClienteHistory}
         onClose={() => setSelectedClienteHistory(null)}
         title={selectedClienteHistory?.nome || 'Histórico do Cliente'}
         subtitle={`Código #${selectedClienteHistory?.id} · CPF/CNPJ: ${selectedClienteHistory?.cpfCnpj}`}
-        maxWidth="max-w-3xl"
+        maxWidth="max-w-2xl"
       >
         {historyLoading ? (
           <div className="py-12 text-center text-sm text-muted-foreground">
@@ -568,7 +691,6 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Informações de Contato e Endereço */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-muted/40 p-4 rounded-xl border border-border">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
@@ -582,7 +704,9 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
                   {selectedClienteHistory?.telefones?.map((t, idx) => (
                     <div key={idx} className="flex items-center gap-2">
                       <Phone className="size-3.5 text-primary" />
-                      <span>{t.numero} ({t.tipo})</span>
+                      <span>
+                        ({t.ddd || '61'}) {t.numero} ({t.tipo})
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -598,7 +722,8 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
                       {selectedClienteHistory.enderecos[0].logradouro}, {selectedClienteHistory.enderecos[0].numero}
                     </p>
                     <p>
-                      {selectedClienteHistory.enderecos[0].bairro} — {selectedClienteHistory.enderecos[0].cidade}/{selectedClienteHistory.enderecos[0].uf}
+                      {selectedClienteHistory.enderecos[0].bairro} — {selectedClienteHistory.enderecos[0].cidade}/
+                      {selectedClienteHistory.enderecos[0].estado || selectedClienteHistory.enderecos[0].uf}
                     </p>
                     <p>CEP: {selectedClienteHistory.enderecos[0].cep}</p>
                   </div>
@@ -608,7 +733,6 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
               </div>
             </div>
 
-            {/* Apólices do Cliente */}
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h4 className="font-sans font-semibold text-sm text-foreground flex items-center gap-2">
@@ -632,12 +756,12 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
                           <StatusBadge status={ap.situacao} />
                         </div>
                         <p className="text-muted-foreground mt-0.5">
-                          Apólice: {ap.numeroApolice} · Vigência até {ap.dataTermino}
+                          Apólice: {ap.numeroApolice} · Vigência: {ap.dataInicio} até {ap.dataTermino}
                         </p>
                       </div>
                       <div className="text-right">
                         <p className="font-semibold text-foreground">
-                          R$ {Number(ap.premio).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          R$ {Number(ap.valorPremio ?? ap.premio ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         </p>
                       </div>
                     </div>
@@ -650,7 +774,6 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
               )}
             </div>
 
-            {/* Cotações do Cliente */}
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h4 className="font-sans font-semibold text-sm text-foreground flex items-center gap-2">
@@ -674,7 +797,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
                           <StatusBadge status={cot.situacao} />
                         </div>
                         <p className="text-muted-foreground mt-0.5">
-                          Solicitada em {cot.dataCotacao}
+                          Solicitada em {cot.dataCotacao || (cot.dataSolicitacao ? cot.dataSolicitacao.substring(0, 10) : '—')}
                         </p>
                       </div>
                     </div>

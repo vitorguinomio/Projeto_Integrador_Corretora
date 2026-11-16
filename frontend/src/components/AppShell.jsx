@@ -67,7 +67,7 @@ export const AppShell = ({
         .toUpperCase()
     : 'HC';
 
-  const userDisplayName = currentUser?.nome || 'Helena Castro Rocha';
+  const userDisplayName = currentUser?.nome || currentUser?.email || 'Usuário HCR';
   const userRoleDisplay =
     currentRole === 'admin'
       ? 'Administradora'
