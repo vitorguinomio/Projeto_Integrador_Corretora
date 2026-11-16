@@ -1,22 +1,28 @@
 package com.hcr.corretora.features.apolices;
 
+import com.hcr.corretora.features.alertas.NotificacaoAlerta;
+import com.hcr.corretora.features.alertas.NotificacaoAlertaRepository;
 import com.hcr.corretora.features.apolices.dto.ApoliceRequest;
 import com.hcr.corretora.features.apolices.dto.ApoliceResponse;
 import com.hcr.corretora.features.apolices.dto.AtualizarParcelaRequest;
 import com.hcr.corretora.features.apolices.dto.ParcelaResponse;
 import com.hcr.corretora.features.apolices.dto.RenovacaoRequest;
+import com.hcr.corretora.features.auditoria.AuditoriaService;
 import com.hcr.corretora.features.clientes.Cliente;
 import com.hcr.corretora.features.clientes.ClienteRepository;
 import com.hcr.corretora.features.corretores.Corretor;
 import com.hcr.corretora.features.corretores.CorretorRepository;
 import com.hcr.corretora.features.seguros.Seguro;
 import com.hcr.corretora.features.seguros.SeguroRepository;
+import com.hcr.corretora.features.usuarios.Usuario;
+import com.hcr.corretora.features.usuarios.UsuarioRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -31,19 +37,28 @@ public class ApoliceService {
     private final CorretorRepository corretorRepository;
     private final SeguroRepository seguroRepository;
     private final ParcelaPagamentoRepository parcelaPagamentoRepository;
+    private final NotificacaoAlertaRepository notificacaoAlertaRepository;
+    private final UsuarioRepository usuarioRepository;
+    private final AuditoriaService auditoriaService;
 
     public ApoliceService(
             ApoliceRepository apoliceRepository,
             ClienteRepository clienteRepository,
             CorretorRepository corretorRepository,
             SeguroRepository seguroRepository,
-            ParcelaPagamentoRepository parcelaPagamentoRepository
+            ParcelaPagamentoRepository parcelaPagamentoRepository,
+            NotificacaoAlertaRepository notificacaoAlertaRepository,
+            UsuarioRepository usuarioRepository,
+            AuditoriaService auditoriaService
     ) {
         this.apoliceRepository = apoliceRepository;
         this.clienteRepository = clienteRepository;
         this.corretorRepository = corretorRepository;
         this.seguroRepository = seguroRepository;
         this.parcelaPagamentoRepository = parcelaPagamentoRepository;
+        this.notificacaoAlertaRepository = notificacaoAlertaRepository;
+        this.usuarioRepository = usuarioRepository;
+        this.auditoriaService = auditoriaService;
     }
 
     public List<ApoliceResponse> pesquisar(String termo, String situacao, Long clienteId, Long corretorId) {
@@ -116,6 +131,24 @@ public class ApoliceService {
         gerarParcelas(apolice, premio, request.dataInicio(), parcelasQtd);
 
         Apolice salva = apoliceRepository.save(apolice);
+
+        auditoriaService.registrarOperacao(
+                "CRIACAO",
+                "apolice",
+                "Emissão da apólice " + salva.getNumeroApolice() + " para " + cliente.getNome() + " com " + parcelasQtd + " parcela(s)"
+        );
+
+        Usuario dest = corretor.getUsuario() != null ? corretor.getUsuario() : obterPrimeiroUsuario();
+        if (dest != null) {
+            notificacaoAlertaRepository.save(new NotificacaoAlerta(
+                    null,
+                    "Nova apólice " + salva.getNumeroApolice() + " (" + seguro.getNome() + ") emitida para o cliente " + cliente.getNome() + ".",
+                    "PENDENTE",
+                    LocalDateTime.now(),
+                    dest
+            ));
+        }
+
         return toResponse(salva);
     }
 
@@ -170,6 +203,11 @@ public class ApoliceService {
         gerarParcelas(novaApolice, novoPremio, baseVencimentoParcelas, parcelasQtd);
 
         Apolice salva = apoliceRepository.save(novaApolice);
+        auditoriaService.registrarOperacao(
+                "RENOVAR",
+                "apolice",
+                "Renovação da apólice " + apoliceAntiga.getNumeroApolice() + " -> " + salva.getNumeroApolice() + " mantendo data inicial " + dataInicioOriginal
+        );
         return toResponse(salva);
     }
 
@@ -177,7 +215,9 @@ public class ApoliceService {
     public ApoliceResponse cancelar(Long id) {
         Apolice apolice = buscarEntidadePorId(id);
         apolice.setSituacao("CANCELADA");
-        return toResponse(apoliceRepository.save(apolice));
+        Apolice salva = apoliceRepository.save(apolice);
+        auditoriaService.registrarOperacao("CANCELAR", "apolice", "Cancelamento da apólice " + salva.getNumeroApolice());
+        return toResponse(salva);
     }
 
     public List<ApoliceResponse> listarAlertasVencimento(int dias) {
@@ -232,6 +272,12 @@ public class ApoliceService {
 
         ParcelaPagamento salva = parcelaPagamentoRepository.save(parcela);
         int numero = salva.getNumeroParcela() != null ? salva.getNumeroParcela() : 1;
+        auditoriaService.registrarOperacao(
+                "PAGAR",
+                "parcela_pagamentos",
+                "Parcela #" + numero + " (ID #" + salva.getId() + ") atualizada para " + salva.getStatus()
+                        + (salva.getFormaPagamento() != null ? " via " + salva.getFormaPagamento() : "")
+        );
         return toParcelaResponse(salva, numero);
     }
 
@@ -251,6 +297,11 @@ public class ApoliceService {
             );
             apolice.addParcela(parcela);
         }
+    }
+
+    private Usuario obterPrimeiroUsuario() {
+        List<Usuario> all = usuarioRepository.findAll();
+        return all.isEmpty() ? null : all.get(0);
     }
 
     public ApoliceResponse toResponse(Apolice a) {

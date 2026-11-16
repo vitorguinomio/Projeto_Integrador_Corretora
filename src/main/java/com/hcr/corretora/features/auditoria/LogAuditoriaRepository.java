@@ -9,4 +9,5 @@ import java.util.List;
 public interface LogAuditoriaRepository extends JpaRepository<LogAuditoria, Long> {
     List<LogAuditoria> findAllByOrderByDataHoraDesc();
     List<LogAuditoria> findByTabelaAfetadaOrderByDataHoraDesc(String tabelaAfetada);
+    List<LogAuditoria> findByTabelaAfetadaIgnoreCaseOrderByDataHoraDesc(String tabelaAfetada);
 }

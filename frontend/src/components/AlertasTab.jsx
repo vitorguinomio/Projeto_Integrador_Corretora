@@ -1,21 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Bell,
   AlertTriangle,
   Clock,
   Shield,
-  CheckCircle2,
-  Calendar,
-  RefreshCw,
-  Info
+  Info,
+  Plus,
+  XCircle
 } from 'lucide-react';
-import { PageHeader, StatusBadge, SectionCard, EmptyState } from './ui/UiBits';
+import {
+  PageHeader,
+  SectionCard,
+  EmptyState,
+  Modal,
+  FieldError,
+  FeedbackBanner,
+  getErrorInputStyle
+} from './ui/UiBits';
 import { apiFetch } from '../api';
 
 export const AlertasTab = ({ setActiveTab, currentUser, currentRole }) => {
   const [alertas, setAlertas] = useState([]);
   const [apolices, setApolices] = useState([]);
+  const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [pageFeedback, setPageFeedback] = useState(null);
+
+  // Modal Novo Alerta
+  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [form, setForm] = useState({
+    assunto: '',
+    usuarioId: ''
+  });
+  const [formError, setFormError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -24,12 +41,20 @@ export const AlertasTab = ({ setActiveTab, currentUser, currentRole }) => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [alertasData, apolicesData] = await Promise.all([
+      const [alertasData, apolicesData, usuariosData] = await Promise.all([
         apiFetch('/alertas').catch(() => []),
-        apiFetch('/apolices').catch(() => [])
+        apiFetch('/apolices').catch(() => []),
+        apiFetch('/usuarios').catch(() => [])
       ]);
       setAlertas(alertasData || []);
       setApolices(apolicesData || []);
+      setUsuarios(usuariosData || []);
+      if (usuariosData && usuariosData.length > 0) {
+        setForm((prev) => ({
+          ...prev,
+          usuarioId: prev.usuarioId || currentUser?.id || usuariosData[0].id
+        }));
+      }
     } catch (err) {
       console.error('Erro ao carregar alertas:', err);
     } finally {
@@ -40,9 +65,49 @@ export const AlertasTab = ({ setActiveTab, currentUser, currentRole }) => {
   const handleMarcarLido = async (id) => {
     try {
       await apiFetch(`/alertas/${id}/lido`, { method: 'PUT' });
-      setAlertas(alertas.map((a) => (a.id === id ? { ...a, lido: true } : a)));
+      setAlertas(alertas.map((a) => (a.id === id ? { ...a, lido: true, status: 'LIDA' } : a)));
+      setPageFeedback({
+        type: 'success',
+        message: `Alerta #${id} marcado como lido no banco de dados.`
+      });
     } catch (err) {
-      console.error('Erro ao marcar lido:', err);
+      setPageFeedback({
+        type: 'error',
+        message: err.message || 'Erro ao marcar alerta como lido.'
+      });
+    }
+  };
+
+  const handleCreateAlerta = async (e) => {
+    e.preventDefault();
+    setFormError(null);
+
+    if (!form.assunto || form.assunto.trim().length < 5) {
+      setFormError('Informe a mensagem/assunto do alerta (mínimo de 5 caracteres).');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const novo = await apiFetch('/alertas', {
+        method: 'POST',
+        body: JSON.stringify({
+          assunto: form.assunto.trim(),
+          usuarioId: form.usuarioId ? Number(form.usuarioId) : undefined
+        })
+      });
+
+      setAlertas([novo, ...alertas]);
+      setIsNewModalOpen(false);
+      setForm((prev) => ({ ...prev, assunto: '' }));
+      setPageFeedback({
+        type: 'success',
+        message: 'Novo alerta cadastrado com sucesso na tabela notificacao_alerta!'
+      });
+    } catch (err) {
+      setFormError(err.message || 'Erro ao cadastrar notificação de alerta.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -70,7 +135,28 @@ export const AlertasTab = ({ setActiveTab, currentUser, currentRole }) => {
         eyebrow="Acompanhamento"
         title="Alertas"
         description="Apólices que terminam nos próximos 30 dias e avisos das atividades importantes da corretora."
+        actions={
+          <button
+            type="button"
+            onClick={() => {
+              setFormError(null);
+              setIsNewModalOpen(true);
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="size-4" />
+            Novo alerta
+          </button>
+        }
       />
+
+      {pageFeedback && (
+        <FeedbackBanner
+          type={pageFeedback.type}
+          message={pageFeedback.message}
+          onClose={() => setPageFeedback(null)}
+        />
+      )}
 
       {/* Seção 1: Vencimentos Próximos */}
       <SectionCard
@@ -135,7 +221,7 @@ export const AlertasTab = ({ setActiveTab, currentUser, currentRole }) => {
       </SectionCard>
 
       {/* Seção 2: Avisos e Notificações do Sistema */}
-      <SectionCard title="Notificações e Avisos">
+      <SectionCard title="Notificações e Avisos Registrados no Banco">
         {alertas.length === 0 ? (
           <EmptyState
             title="Nenhum alerta registrado"
@@ -167,17 +253,18 @@ export const AlertasTab = ({ setActiveTab, currentUser, currentRole }) => {
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="font-semibold text-sm text-foreground">
-                        {alerta.titulo}
+                        {alerta.titulo || 'Notificação'}
                       </h4>
                       {!alerta.lido && (
                         <span className="size-2 rounded-full bg-signal" title="Não lido" />
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {alerta.mensagem}
+                      {alerta.mensagem || alerta.assunto}
                     </p>
                     <span className="text-[0.68rem] text-muted-foreground block mt-1">
-                      Criado em: {alerta.dataCriacao ? alerta.dataCriacao.replace('T', ' ').substring(0, 16) : 'Hoje'}
+                      Destinatário: {alerta.usuarioEmail || 'Sistema'} · Criado em:{' '}
+                      {alerta.dataCriacao ? alerta.dataCriacao.replace('T', ' ').substring(0, 16) : 'Hoje'}
                     </span>
                   </div>
                 </div>
@@ -196,6 +283,76 @@ export const AlertasTab = ({ setActiveTab, currentUser, currentRole }) => {
           </div>
         )}
       </SectionCard>
+
+      {/* Modal Novo Alerta */}
+      <Modal
+        isOpen={isNewModalOpen}
+        onClose={() => setIsNewModalOpen(false)}
+        title="Registrar novo alerta"
+        subtitle="Cadastre uma notificação ou lembrete operacional diretamente no PostgreSQL."
+      >
+        <form onSubmit={handleCreateAlerta} noValidate className="space-y-4">
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              Usuário Destinatário *
+            </label>
+            <select
+              value={form.usuarioId}
+              onChange={(e) => setForm({ ...form, usuarioId: e.target.value })}
+              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+            >
+              {usuarios.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.nome || u.loginEmail} ({u.loginEmail})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              Assunto / Mensagem do Alerta *
+            </label>
+            <div className="relative">
+              <textarea
+                rows={3}
+                value={form.assunto}
+                onChange={(e) => {
+                  setForm({ ...form, assunto: e.target.value });
+                  if (formError) setFormError(null);
+                }}
+                style={getErrorInputStyle(!!formError)}
+                placeholder="Ex: Entrar em contato com cliente sobre renovação de apólice..."
+                className="w-full rounded-md border border-input bg-card p-3 text-sm"
+              />
+              {formError && (
+                <XCircle
+                  className="size-4 absolute right-3 top-3"
+                  style={{ color: '#dc2626' }}
+                />
+              )}
+            </div>
+            <FieldError error={formError} />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              type="button"
+              onClick={() => setIsNewModalOpen(false)}
+              className="px-4 py-2 text-sm rounded-md border border-input hover:bg-muted"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90 disabled:opacity-50"
+            >
+              {submitting ? 'Salvando...' : 'Salvar alerta'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

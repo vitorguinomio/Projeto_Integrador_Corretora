@@ -1,5 +1,6 @@
 package com.hcr.corretora.features.cotacoes;
 
+import com.hcr.corretora.features.auditoria.AuditoriaService;
 import com.hcr.corretora.features.clientes.Cliente;
 import com.hcr.corretora.features.clientes.ClienteRepository;
 import com.hcr.corretora.features.corretores.Corretor;
@@ -26,19 +27,22 @@ public class CotacaoService {
     private final CorretorRepository corretorRepository;
     private final SeguroRepository seguroRepository;
     private final PropostaRepository propostaRepository;
+    private final AuditoriaService auditoriaService;
 
     public CotacaoService(
             CotacaoRepository cotacaoRepository,
             ClienteRepository clienteRepository,
             CorretorRepository corretorRepository,
             SeguroRepository seguroRepository,
-            PropostaRepository propostaRepository
+            PropostaRepository propostaRepository,
+            AuditoriaService auditoriaService
     ) {
         this.cotacaoRepository = cotacaoRepository;
         this.clienteRepository = clienteRepository;
         this.corretorRepository = corretorRepository;
         this.seguroRepository = seguroRepository;
         this.propostaRepository = propostaRepository;
+        this.auditoriaService = auditoriaService;
     }
 
     public List<CotacaoResponse> listar(Long clienteId, Long corretorId, String situacao) {
@@ -90,12 +94,18 @@ public class CotacaoService {
                 LocalDateTime.now(),
                 valor,
                 request.situacao() != null ? request.situacao() : "SOLICITADA",
+                request.informacoesAdicionais(),
                 cliente,
                 corretor,
                 seguro
         );
 
         Cotacao salva = cotacaoRepository.save(cotacao);
+        auditoriaService.registrarOperacao(
+                "CRIACAO",
+                "cotacao",
+                "Solicitação de cotação #" + salva.getId() + " para cliente " + cliente.getNome() + " (" + seguro.getNome() + ")"
+        );
         return toResponse(salva);
     }
 
@@ -110,7 +120,9 @@ public class CotacaoService {
             cotacao.setCorretor(corretor);
         }
 
-        return toResponse(cotacaoRepository.save(cotacao));
+        Cotacao salva = cotacaoRepository.save(cotacao);
+        auditoriaService.registrarOperacao("ATUALIZAR", "cotacao", "Cotação #" + id + " alterada para " + salva.getSituacao());
+        return toResponse(salva);
     }
 
     public CotacaoResponse toResponse(Cotacao c) {
@@ -137,9 +149,11 @@ public class CotacaoService {
                 ? c.getDataSolicitacao().toLocalDate().toString()
                 : "";
 
-        String info = c.getSeguro() != null && c.getSeguro().getDescricao() != null
-                ? c.getSeguro().getDescricao()
-                : "Solicitação de cotação registrada.";
+        String info = (c.getObservacoes() != null && !c.getObservacoes().isBlank())
+                ? c.getObservacoes()
+                : (c.getSeguro() != null && c.getSeguro().getDescricao() != null
+                        ? c.getSeguro().getDescricao()
+                        : "Solicitação de cotação registrada.");
 
         return new CotacaoResponse(
                 c.getId(),

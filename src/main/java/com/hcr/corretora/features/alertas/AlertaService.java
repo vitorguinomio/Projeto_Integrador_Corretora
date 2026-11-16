@@ -2,6 +2,7 @@ package com.hcr.corretora.features.alertas;
 
 import com.hcr.corretora.features.alertas.dto.CriarNotificacaoRequest;
 import com.hcr.corretora.features.alertas.dto.NotificacaoResponse;
+import com.hcr.corretora.features.auditoria.AuditoriaService;
 import com.hcr.corretora.features.usuarios.Usuario;
 import com.hcr.corretora.features.usuarios.UsuarioRepository;
 import org.springframework.stereotype.Service;
@@ -16,10 +17,16 @@ public class AlertaService {
 
     private final NotificacaoAlertaRepository notificacaoAlertaRepository;
     private final UsuarioRepository usuarioRepository;
+    private final AuditoriaService auditoriaService;
 
-    public AlertaService(NotificacaoAlertaRepository notificacaoAlertaRepository, UsuarioRepository usuarioRepository) {
+    public AlertaService(
+            NotificacaoAlertaRepository notificacaoAlertaRepository,
+            UsuarioRepository usuarioRepository,
+            AuditoriaService auditoriaService
+    ) {
         this.notificacaoAlertaRepository = notificacaoAlertaRepository;
         this.usuarioRepository = usuarioRepository;
+        this.auditoriaService = auditoriaService;
     }
 
     public List<NotificacaoResponse> listarPorUsuario(String email) {
@@ -36,8 +43,17 @@ public class AlertaService {
 
     @Transactional
     public NotificacaoResponse criar(CriarNotificacaoRequest request) {
-        Usuario usuario = usuarioRepository.findById(request.usuarioId())
-                .orElseThrow(() -> new IllegalArgumentException("Usuário não encontrado com id: " + request.usuarioId()));
+        Usuario usuario = null;
+        if (request.usuarioId() != null) {
+            usuario = usuarioRepository.findById(request.usuarioId()).orElse(null);
+        }
+        if (usuario == null) {
+            List<Usuario> todos = usuarioRepository.findAll();
+            if (todos.isEmpty()) {
+                throw new IllegalArgumentException("Nenhum usuário cadastrado para vincular a notificação.");
+            }
+            usuario = todos.get(0);
+        }
 
         NotificacaoAlerta alerta = new NotificacaoAlerta(
                 null,
@@ -48,6 +64,11 @@ public class AlertaService {
         );
 
         NotificacaoAlerta salva = notificacaoAlertaRepository.save(alerta);
+        auditoriaService.registrarOperacao(
+                "CRIACAO",
+                "notificacao_alerta",
+                "Registro de alerta/notificação #" + salva.getId() + ": " + salva.getAssunto()
+        );
         return toResponse(salva);
     }
 
@@ -57,7 +78,9 @@ public class AlertaService {
                 .orElseThrow(() -> new IllegalArgumentException("Notificação não encontrada com id: " + id));
 
         alerta.setStatus("LIDA");
-        return toResponse(notificacaoAlertaRepository.save(alerta));
+        NotificacaoAlerta salva = notificacaoAlertaRepository.save(alerta);
+        auditoriaService.registrarOperacao("ATUALIZAR", "notificacao_alerta", "Notificação #" + id + " marcada como lida");
+        return toResponse(salva);
     }
 
     public NotificacaoResponse toResponse(NotificacaoAlerta a) {

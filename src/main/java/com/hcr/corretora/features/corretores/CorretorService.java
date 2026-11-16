@@ -2,6 +2,7 @@ package com.hcr.corretora.features.corretores;
 
 import com.hcr.corretora.features.apolices.Apolice;
 import com.hcr.corretora.features.apolices.ApoliceRepository;
+import com.hcr.corretora.features.auditoria.AuditoriaService;
 import com.hcr.corretora.features.corretores.dto.CorretorRequest;
 import com.hcr.corretora.features.corretores.dto.CorretorResponse;
 import com.hcr.corretora.features.usuarios.Usuario;
@@ -21,17 +22,20 @@ public class CorretorService {
     private final UsuarioRepository usuarioRepository;
     private final ApoliceRepository apoliceRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuditoriaService auditoriaService;
 
     public CorretorService(
             CorretorRepository corretorRepository,
             UsuarioRepository usuarioRepository,
             ApoliceRepository apoliceRepository,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            AuditoriaService auditoriaService
     ) {
         this.corretorRepository = corretorRepository;
         this.usuarioRepository = usuarioRepository;
         this.apoliceRepository = apoliceRepository;
         this.passwordEncoder = passwordEncoder;
+        this.auditoriaService = auditoriaService;
     }
 
     public List<CorretorResponse> listarTodos() {
@@ -91,6 +95,11 @@ public class CorretorService {
         );
 
         Corretor salvo = corretorRepository.save(corretor);
+        auditoriaService.registrarOperacao(
+                "CRIACAO",
+                "corretor",
+                "Cadastro do corretor " + salvo.getNome() + " (SUSEP: " + salvo.getDadosProfissionais() + ")"
+        );
         return toResponse(salvo);
     }
 
@@ -137,7 +146,9 @@ public class CorretorService {
             }
         }
 
-        return toResponse(corretorRepository.save(corretor));
+        Corretor salvo = corretorRepository.save(corretor);
+        auditoriaService.registrarOperacao("ATUALIZAR", "corretor", "Atualização cadastral do corretor " + salvo.getNome());
+        return toResponse(salvo);
     }
 
     @Transactional
@@ -148,7 +159,13 @@ public class CorretorService {
             corretor.getUsuario().setStatus(status.toUpperCase());
             usuarioRepository.save(corretor.getUsuario());
         }
-        return toResponse(corretorRepository.save(corretor));
+        Corretor salvo = corretorRepository.save(corretor);
+        auditoriaService.registrarOperacao(
+                "ATUALIZAR",
+                "corretor",
+                "Alteração de status do corretor " + salvo.getNome() + " para " + salvo.getStatus()
+        );
+        return toResponse(salvo);
     }
 
     public CorretorResponse toResponse(Corretor corretor) {

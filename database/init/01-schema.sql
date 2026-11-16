@@ -111,6 +111,7 @@ CREATE TABLE cotacao (
     data_solicitacao TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     valor NUMERIC(10,2),
     situacao VARCHAR(50) NOT NULL DEFAULT 'SOLICITADA',
+    observacoes TEXT,
     fk_cliente_id BIGINT NOT NULL,
     fk_corretor_id BIGINT,
     fk_seguro_id BIGINT NOT NULL,

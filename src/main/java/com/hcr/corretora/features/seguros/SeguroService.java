@@ -1,5 +1,6 @@
 package com.hcr.corretora.features.seguros;
 
+import com.hcr.corretora.features.auditoria.AuditoriaService;
 import com.hcr.corretora.features.seguros.dto.CoberturaDto;
 import com.hcr.corretora.features.seguros.dto.SeguroRequest;
 import com.hcr.corretora.features.seguros.dto.SeguroResponse;
@@ -16,10 +17,16 @@ public class SeguroService {
 
     private final SeguroRepository seguroRepository;
     private final CoberturaRepository coberturaRepository;
+    private final AuditoriaService auditoriaService;
 
-    public SeguroService(SeguroRepository seguroRepository, CoberturaRepository coberturaRepository) {
+    public SeguroService(
+            SeguroRepository seguroRepository,
+            CoberturaRepository coberturaRepository,
+            AuditoriaService auditoriaService
+    ) {
         this.seguroRepository = seguroRepository;
         this.coberturaRepository = coberturaRepository;
+        this.auditoriaService = auditoriaService;
     }
 
     public List<SeguroResponse> listarTodos() {
@@ -64,7 +71,7 @@ public class SeguroService {
                 valorBase
         );
 
-        if (request.coberturas() != null) {
+        if (request.coberturas() != null && !request.coberturas().isEmpty()) {
             for (CoberturaDto c : request.coberturas()) {
                 String descCob = (c.nome() != null && !c.nome().isBlank()) ? c.nome().trim() : c.descricao();
                 BigDecimal valCob = c.valor() != null ? c.valor() : (c.valorLimite() != null ? c.valorLimite() : BigDecimal.ZERO);
@@ -73,9 +80,16 @@ public class SeguroService {
                     seguro.addCobertura(cob);
                 }
             }
+        } else {
+            seguro.addCobertura(new Cobertura(null, "Cobertura Básica " + request.nome().trim(), valorBase.multiply(BigDecimal.TEN), seguro));
         }
 
         Seguro salvo = seguroRepository.save(seguro);
+        auditoriaService.registrarOperacao(
+                "CRIACAO",
+                "seguro",
+                "Cadastro do produto de seguro '" + salvo.getNome() + "' com " + salvo.getCoberturas().size() + " cobertura(s)"
+        );
         return toResponse(salvo);
     }
 
@@ -114,7 +128,9 @@ public class SeguroService {
             }
         }
 
-        return toResponse(seguroRepository.save(seguro));
+        Seguro salvo = seguroRepository.save(seguro);
+        auditoriaService.registrarOperacao("ATUALIZAR", "seguro", "Atualização do seguro '" + salvo.getNome() + "'");
+        return toResponse(salvo);
     }
 
     @Transactional
@@ -127,12 +143,18 @@ public class SeguroService {
         BigDecimal valCob = dto.valor() != null ? dto.valor() : (dto.valorLimite() != null ? dto.valorLimite() : BigDecimal.ZERO);
         Cobertura cobertura = new Cobertura(null, descCob, valCob, seguro);
         Cobertura salva = coberturaRepository.save(cobertura);
+        auditoriaService.registrarOperacao(
+                "CRIACAO",
+                "cobertura",
+                "Inclusão da cobertura '" + salva.getDescricao() + "' no seguro '" + seguro.getNome() + "'"
+        );
         return new CoberturaDto(salva.getId(), salva.getDescricao(), salva.getDescricao(), salva.getValor(), salva.getValor());
     }
 
     @Transactional
     public void removerCobertura(Long coberturaId) {
         coberturaRepository.deleteById(coberturaId);
+        auditoriaService.registrarOperacao("EXCLUIR", "cobertura", "Remoção da cobertura ID #" + coberturaId);
     }
 
     public SeguroResponse toResponse(Seguro seguro) {

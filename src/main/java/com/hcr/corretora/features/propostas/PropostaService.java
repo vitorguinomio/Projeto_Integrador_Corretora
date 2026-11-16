@@ -2,6 +2,7 @@ package com.hcr.corretora.features.propostas;
 
 import com.hcr.corretora.features.apolices.ApoliceService;
 import com.hcr.corretora.features.apolices.dto.ApoliceRequest;
+import com.hcr.corretora.features.auditoria.AuditoriaService;
 import com.hcr.corretora.features.corretores.Corretor;
 import com.hcr.corretora.features.corretores.CorretorRepository;
 import com.hcr.corretora.features.cotacoes.Cotacao;
@@ -23,17 +24,20 @@ public class PropostaService {
     private final CotacaoRepository cotacaoRepository;
     private final CorretorRepository corretorRepository;
     private final ApoliceService apoliceService;
+    private final AuditoriaService auditoriaService;
 
     public PropostaService(
             PropostaRepository propostaRepository,
             CotacaoRepository cotacaoRepository,
             CorretorRepository corretorRepository,
-            ApoliceService apoliceService
+            ApoliceService apoliceService,
+            AuditoriaService auditoriaService
     ) {
         this.propostaRepository = propostaRepository;
         this.cotacaoRepository = cotacaoRepository;
         this.corretorRepository = corretorRepository;
         this.apoliceService = apoliceService;
+        this.auditoriaService = auditoriaService;
     }
 
     public List<PropostaResponse> listarTodas() {
@@ -82,6 +86,11 @@ public class PropostaService {
         cotacaoRepository.save(cotacao);
 
         Proposta salva = propostaRepository.save(proposta);
+        auditoriaService.registrarOperacao(
+                "CRIACAO",
+                "proposta",
+                "Elaboração da proposta #" + salva.getId() + " vinculada à cotação #" + cotacao.getId()
+        );
         return toResponse(salva);
     }
 
@@ -94,6 +103,11 @@ public class PropostaService {
         cotacaoRepository.save(cotacao);
 
         Proposta salva = propostaRepository.save(proposta);
+        auditoriaService.registrarOperacao(
+                "ATUALIZAR",
+                "proposta",
+                "Aceite da proposta #" + salva.getId() + " pelo cliente e geração automática de apólice"
+        );
 
         // Gera apólice automaticamente ao aceitar proposta
         if (cotacao.getCliente() != null && cotacao.getSeguro() != null) {
@@ -131,7 +145,9 @@ public class PropostaService {
         proposta.getCotacao().setSituacao("RECUSADA");
         cotacaoRepository.save(proposta.getCotacao());
 
-        return toResponse(propostaRepository.save(proposta));
+        Proposta salva = propostaRepository.save(proposta);
+        auditoriaService.registrarOperacao("ATUALIZAR", "proposta", "Recusa da proposta #" + salva.getId());
+        return toResponse(salva);
     }
 
     public PropostaResponse toResponse(Proposta p) {

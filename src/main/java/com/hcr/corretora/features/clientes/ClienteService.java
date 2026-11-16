@@ -4,6 +4,7 @@ import com.hcr.corretora.features.apolices.Apolice;
 import com.hcr.corretora.features.apolices.ApoliceRepository;
 import com.hcr.corretora.features.apolices.ApoliceService;
 import com.hcr.corretora.features.apolices.dto.ApoliceResponse;
+import com.hcr.corretora.features.auditoria.AuditoriaService;
 import com.hcr.corretora.features.clientes.dto.ClienteHistoricoResponse;
 import com.hcr.corretora.features.clientes.dto.ClienteRequest;
 import com.hcr.corretora.features.clientes.dto.ClienteResponse;
@@ -33,6 +34,7 @@ public class ClienteService {
     private final PasswordEncoder passwordEncoder;
     private final CotacaoService cotacaoService;
     private final ApoliceService apoliceService;
+    private final AuditoriaService auditoriaService;
 
     public ClienteService(
             ClienteRepository clienteRepository,
@@ -40,7 +42,8 @@ public class ClienteService {
             ApoliceRepository apoliceRepository,
             PasswordEncoder passwordEncoder,
             @Lazy CotacaoService cotacaoService,
-            @Lazy ApoliceService apoliceService
+            @Lazy ApoliceService apoliceService,
+            AuditoriaService auditoriaService
     ) {
         this.clienteRepository = clienteRepository;
         this.usuarioRepository = usuarioRepository;
@@ -48,6 +51,7 @@ public class ClienteService {
         this.passwordEncoder = passwordEncoder;
         this.cotacaoService = cotacaoService;
         this.apoliceService = apoliceService;
+        this.auditoriaService = auditoriaService;
     }
 
     public List<ClienteResponse> listarTodos() {
@@ -105,15 +109,17 @@ public class ClienteService {
             throw new IllegalArgumentException("Já existe um cliente cadastrado com o CPF/CNPJ: " + request.cpfCnpj());
         }
 
-        Usuario usuario = null;
-        if (request.senhaAcesso() != null && !request.senhaAcesso().isBlank()) {
-            String email = request.email().trim().toLowerCase();
-            if (usuarioRepository.existsByLoginEmail(email)) {
-                usuario = usuarioRepository.findByLoginEmail(email).orElse(null);
-            } else {
-                usuario = new Usuario(null, request.nome().trim(), email, passwordEncoder.encode(request.senhaAcesso()), "CLIENTE", "ATIVO");
-                usuario = usuarioRepository.save(usuario);
-            }
+        String email = request.email().trim().toLowerCase();
+        String senha = (request.senhaAcesso() != null && !request.senhaAcesso().isBlank())
+                ? request.senhaAcesso()
+                : "cliente123";
+
+        Usuario usuario;
+        if (usuarioRepository.existsByLoginEmail(email)) {
+            usuario = usuarioRepository.findByLoginEmail(email).orElse(null);
+        } else {
+            usuario = new Usuario(null, request.nome().trim(), email, passwordEncoder.encode(senha), "CLIENTE", "ATIVO");
+            usuario = usuarioRepository.save(usuario);
         }
 
         Cliente cliente = new Cliente(
@@ -121,28 +127,30 @@ public class ClienteService {
                 request.nome().trim(),
                 request.cpfCnpj().trim(),
                 request.dataNasc() != null ? request.dataNasc() : LocalDate.of(1990, 1, 1),
-                request.email().trim().toLowerCase(),
+                email,
                 usuario
         );
 
-        if (request.enderecos() != null) {
+        if (request.enderecos() != null && !request.enderecos().isEmpty()) {
             for (EnderecoDto e : request.enderecos()) {
                 Endereco endereco = new Endereco(
                         null,
                         e.cep() != null && !e.cep().isBlank() ? e.cep() : "70000-000",
-                        e.logradouro(),
+                        e.logradouro() != null && !e.logradouro().isBlank() ? e.logradouro() : "Plano Piloto",
                         e.numero() != null && !e.numero().isBlank() ? e.numero() : "S/N",
                         e.complemento(),
-                        e.bairro() != null && !e.bairro().isBlank() ? e.bairro() : "Plano Piloto",
+                        e.bairro() != null && !e.bairro().isBlank() ? e.bairro() : "Asa Sul",
                         e.cidade() != null && !e.cidade().isBlank() ? e.cidade() : "Brasília",
                         e.estado() != null && !e.estado().isBlank() ? e.estado().toUpperCase() : "DF",
                         cliente
                 );
                 cliente.addEndereco(endereco);
             }
+        } else {
+            cliente.addEndereco(new Endereco(null, "70000-000", "Plano Piloto", "S/N", null, "Asa Sul", "Brasília", "DF", cliente));
         }
 
-        if (request.telefones() != null) {
+        if (request.telefones() != null && !request.telefones().isEmpty()) {
             for (TelefoneDto t : request.telefones()) {
                 String ddd = t.ddd();
                 String num = t.numero() != null ? t.numero() : "";
@@ -158,15 +166,22 @@ public class ClienteService {
                 Telefone tel = new Telefone(
                         null,
                         ddd,
-                        num,
+                        num.isBlank() ? "99000-0000" : num,
                         t.tipo() != null ? t.tipo() : "CELULAR",
                         cliente
                 );
                 cliente.addTelefone(tel);
             }
+        } else {
+            cliente.addTelefone(new Telefone(null, "61", "99000-0000", "CELULAR", cliente));
         }
 
         Cliente salvo = clienteRepository.save(cliente);
+        auditoriaService.registrarOperacao(
+                "CRIACAO",
+                "cliente",
+                "Cadastro do cliente " + salvo.getNome() + " (CPF/CNPJ: " + salvo.getCpfCnpj() + ") com endereço e telefone"
+        );
         return toResponse(salvo);
     }
 
@@ -247,13 +262,17 @@ public class ClienteService {
             }
         }
 
-        return toResponse(clienteRepository.save(cliente));
+        Cliente salvo = clienteRepository.save(cliente);
+        auditoriaService.registrarOperacao("ATUALIZAR", "cliente", "Atualização cadastral do cliente " + salvo.getNome());
+        return toResponse(salvo);
     }
 
     @Transactional
     public void excluir(Long id) {
         Cliente cliente = buscarEntidadePorId(id);
+        String nome = cliente.getNome();
         clienteRepository.delete(cliente);
+        auditoriaService.registrarOperacao("EXCLUIR", "cliente", "Exclusão do cliente " + nome + " (ID #" + id + ")");
     }
 
     public ClienteResponse toResponse(Cliente cliente) {

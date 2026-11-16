@@ -208,6 +208,21 @@ Este documento registra detalhadamente as entregas efetuadas no repositório Git
      - 6 apólices (ativas, próximas do vencimento em 14 e 22 dias e canceladas) com 34 parcelas de pagamento registradas (pagas via PIX, Boleto Bancário, Cartão de Crédito/Débito, Transferência/TED e parcelas pendentes para demonstração).
      - 5 notificações de alerta e 5 registros na trilha de auditoria.
 
+---
+
+## [Commit 12] - Persistência Integrada e Carga Completa nas 14 Tabelas do Banco de Dados PostgreSQL
+- **Data/Hora:** 2026-11-16 10:35
+- **Mensagem:** `feat: persistencia integrada e carga sql completa em todas as 14 tabelas do banco postgresql`
+- **O que foi enviado para o Git:**
+  1. `features/auditoria` (`AuditoriaService.java`, `AuditoriaController.java`, `LogAuditoriaRepository.java`, `LogAuditoriaResponse.java`):
+     - Integração automática da gravação em `log_auditoria` em todos os serviços (`UsuarioService`, `ClienteService`, `CorretorService`, `SeguroService`, `CotacaoService`, `PropostaService`, `ApoliceService` e `AlertaService`) e filtro por tabela em `GET /auditoria?tabela=`.
+  2. `features/usuarios`, `features/clientes`, `features/cotacoes`, `features/apolices` e `features/alertas`:
+     - Sincronização de cadastros para gravar automaticamente em todas as tabelas relacionadas (`usuario` + `administrador` / `corretor` / `cliente` + `endereco` + `telefone`; `apolice` + `parcela_pagamentos` + `notificacao_alerta`; `cotacao` com `observacoes` + `proposta`).
+     - Inclusão de modal de cadastro direto de notificações em `frontend/src/components/AlertasTab.jsx` (`POST /alertas` -> tabela `notificacao_alerta`).
+  3. `database/init/01-schema.sql` e `database/init/02-seed-apresentacao.sql`:
+     - Expansão da carga SQL de apresentação cobrindo todas as 14 tabelas do modelo físico no PostgreSQL (`17` usuários, `3` administradores, `5` corretores, `9` clientes PF/PJ, `10` endereços, `10` telefones, `6` seguros, `18` coberturas, `8` cotações, `6` propostas, `8` apólices, `48` parcelas de pagamento, `8` notificações de alerta e `10` logs de auditoria).
+
+
 
 
 

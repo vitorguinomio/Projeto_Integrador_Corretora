@@ -2,7 +2,12 @@ package com.hcr.corretora.features.usuarios;
 
 import com.hcr.corretora.features.administradores.Administrador;
 import com.hcr.corretora.features.administradores.AdministradorRepository;
+import com.hcr.corretora.features.auditoria.AuditoriaService;
+import com.hcr.corretora.features.clientes.Cliente;
 import com.hcr.corretora.features.clientes.ClienteRepository;
+import com.hcr.corretora.features.clientes.Endereco;
+import com.hcr.corretora.features.clientes.Telefone;
+import com.hcr.corretora.features.corretores.Corretor;
 import com.hcr.corretora.features.corretores.CorretorRepository;
 import com.hcr.corretora.features.usuarios.dto.UsuarioCreateRequest;
 import com.hcr.corretora.features.usuarios.dto.UsuarioResponse;
@@ -10,7 +15,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 @Service
@@ -27,19 +34,22 @@ public class UsuarioService {
     private final CorretorRepository corretorRepository;
     private final ClienteRepository clienteRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuditoriaService auditoriaService;
 
     public UsuarioService(
             UsuarioRepository usuarioRepository,
             AdministradorRepository administradorRepository,
             CorretorRepository corretorRepository,
             ClienteRepository clienteRepository,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            AuditoriaService auditoriaService
     ) {
         this.usuarioRepository = usuarioRepository;
         this.administradorRepository = administradorRepository;
         this.corretorRepository = corretorRepository;
         this.clienteRepository = clienteRepository;
         this.passwordEncoder = passwordEncoder;
+        this.auditoriaService = auditoriaService;
     }
 
     public static void validarFormatoEmail(String email) {
@@ -98,21 +108,41 @@ public class UsuarioService {
                 ? request.nome().trim()
                 : formatarNomeDeEmail(email);
 
+        String statusInicial = request.status() != null ? request.status().toUpperCase() : "ATIVO";
+
         Usuario usuario = new Usuario(
                 null,
                 nome,
                 email,
                 passwordEncoder.encode(request.senha()),
                 rawPerfil.toUpperCase(),
-                request.status() != null ? request.status().toUpperCase() : "ATIVO"
+                statusInicial
         );
 
         Usuario salvo = usuarioRepository.save(usuario);
 
+        // Registra automaticamente na tabela de ator correspondente (administrador, corretor ou cliente)
         if ("ADMINISTRADOR".equalsIgnoreCase(salvo.getPerfilAcesso())
                 && administradorRepository.findByUsuarioId(salvo.getId()).isEmpty()) {
             administradorRepository.save(new Administrador(null, nome, "Administrador", salvo));
+        } else if ("CORRETOR".equalsIgnoreCase(salvo.getPerfilAcesso())
+                && corretorRepository.findByUsuarioId(salvo.getId()).isEmpty()) {
+            String susepAuto = "SUSEP-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase() + "-DF";
+            corretorRepository.save(new Corretor(null, nome, susepAuto, "Geral", "(61) 99000-0000", statusInicial, salvo));
+        } else if ("CLIENTE".equalsIgnoreCase(salvo.getPerfilAcesso())
+                && clienteRepository.findByUsuarioId(salvo.getId()).isEmpty()) {
+            String cpfAuto = String.format("%011d", System.currentTimeMillis() % 100000000000L);
+            Cliente cli = new Cliente(null, nome, cpfAuto, LocalDate.of(1990, 1, 1), email, salvo);
+            cli.addEndereco(new Endereco(null, "70000-000", "Plano Piloto", "S/N", null, "Asa Sul", "Brasília", "DF", cli));
+            cli.addTelefone(new Telefone(null, "61", "99000-0000", "CELULAR", cli));
+            clienteRepository.save(cli);
         }
+
+        auditoriaService.registrarOperacao(
+                "CRIACAO",
+                "usuario",
+                "Cadastro do usuário " + salvo.getLoginEmail() + " com perfil " + salvo.getPerfilAcesso()
+        );
 
         return toResponse(salvo);
     }
@@ -133,6 +163,12 @@ public class UsuarioService {
             corretorRepository.save(c);
         });
 
+        auditoriaService.registrarOperacao(
+                "ATUALIZAR",
+                "usuario",
+                "Alteração de status do usuário " + salvo.getLoginEmail() + " para " + finalStatus
+        );
+
         return toResponse(salvo);
     }
 
@@ -140,7 +176,13 @@ public class UsuarioService {
     public UsuarioResponse alterarPerfil(Long id, String novoPerfil) {
         Usuario usuario = buscarEntidadePorId(id);
         usuario.setPerfilAcesso(novoPerfil.toUpperCase());
-        return toResponse(usuarioRepository.save(usuario));
+        Usuario salvo = usuarioRepository.save(usuario);
+        auditoriaService.registrarOperacao(
+                "ATUALIZAR",
+                "usuario",
+                "Alteração de perfil do usuário " + salvo.getLoginEmail() + " para " + salvo.getPerfilAcesso()
+        );
+        return toResponse(salvo);
     }
 
     public UsuarioResponse toResponse(Usuario usuario) {

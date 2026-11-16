@@ -4,6 +4,7 @@ import com.hcr.corretora.features.auditoria.dto.LogAuditoriaResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -19,7 +20,7 @@ public class AuditoriaController {
     }
 
     @GetMapping
-    public ResponseEntity<List<LogAuditoriaResponse>> listar() {
-        return ResponseEntity.ok(auditoriaService.listarTodos());
+    public ResponseEntity<List<LogAuditoriaResponse>> listar(@RequestParam(required = false) String tabela) {
+        return ResponseEntity.ok(auditoriaService.listarTodos(tabela));
     }
 }

@@ -25,6 +25,9 @@ public class Cotacao {
     @Column(nullable = false, length = 50)
     private String situacao = "SOLICITADA";
 
+    @Column(name = "observacoes", columnDefinition = "TEXT")
+    private String observacoes;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "fk_cliente_id", nullable = false)
     private Cliente cliente;
@@ -40,10 +43,24 @@ public class Cotacao {
     public Cotacao() {}
 
     public Cotacao(Long id, LocalDateTime dataSolicitacao, BigDecimal valor, String situacao, Cliente cliente, Corretor corretor, Seguro seguro) {
+        this(id, dataSolicitacao, valor, situacao, null, cliente, corretor, seguro);
+    }
+
+    public Cotacao(
+            Long id,
+            LocalDateTime dataSolicitacao,
+            BigDecimal valor,
+            String situacao,
+            String observacoes,
+            Cliente cliente,
+            Corretor corretor,
+            Seguro seguro
+    ) {
         this.id = id;
         this.dataSolicitacao = dataSolicitacao != null ? dataSolicitacao : LocalDateTime.now();
         this.valor = valor;
         this.situacao = (situacao != null && !situacao.isBlank()) ? situacao : "SOLICITADA";
+        this.observacoes = observacoes;
         this.cliente = cliente;
         this.corretor = corretor;
         this.seguro = seguro;
@@ -79,6 +96,14 @@ public class Cotacao {
 
     public void setSituacao(String situacao) {
         this.situacao = situacao;
+    }
+
+    public String getObservacoes() {
+        return observacoes;
+    }
+
+    public void setObservacoes(String observacoes) {
+        this.observacoes = observacoes;
     }
 
     public Cliente getCliente() {
