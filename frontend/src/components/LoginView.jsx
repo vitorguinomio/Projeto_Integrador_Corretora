@@ -69,17 +69,18 @@ export const LoginView = ({ onLoginSuccess }) => {
         body: JSON.stringify({ email: email.trim().toLowerCase(), senha })
       });
 
+      const perfil = data.perfilAcesso || data.perfil || 'ADMINISTRADOR';
       setAuthToken(data.token);
       onLoginSuccess({
-        id: data.id,
+        id: data.userId || data.id,
         nome: data.nome,
         email: data.email,
-        perfil: data.perfil,
-        perfilAcesso: data.perfil,
+        perfil,
+        perfilAcesso: perfil,
         role:
-          data.perfil === 'ADMINISTRADOR'
+          perfil === 'ADMINISTRADOR'
             ? 'admin'
-            : data.perfil === 'CORRETOR'
+            : perfil === 'CORRETOR'
             ? 'corretor'
             : 'cliente'
       });

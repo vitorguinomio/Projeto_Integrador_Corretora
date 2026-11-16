@@ -3,6 +3,8 @@
 -- Modelo Físico Completo conforme Documentação Oficial do Projeto Integrador
 -- ==============================================================================
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 DROP TABLE IF EXISTS log_auditoria CASCADE;
 DROP TABLE IF EXISTS notificacao_alerta CASCADE;
 DROP TABLE IF EXISTS parcela_pagamentos CASCADE;
@@ -27,6 +29,7 @@ DROP TABLE IF EXISTS usuarios CASCADE;
 -- 1. Criação das Tabelas Fortes (Independentes)
 CREATE TABLE usuario (
     id BIGSERIAL PRIMARY KEY,
+    nome VARCHAR(100),
     login_email VARCHAR(100) NOT NULL UNIQUE,
     senha VARCHAR(255) NOT NULL,
     perfil_acesso VARCHAR(20) NOT NULL,
@@ -64,6 +67,8 @@ CREATE TABLE corretor (
     id BIGSERIAL PRIMARY KEY,
     nome VARCHAR(100) NOT NULL,
     dados_profissionais VARCHAR(50) NOT NULL,
+    especialidade VARCHAR(100) DEFAULT 'Geral',
+    telefone VARCHAR(30),
     status VARCHAR(20) NOT NULL DEFAULT 'ATIVO',
     fk_usuario_id BIGINT UNIQUE,
     CONSTRAINT fk_corretor_usuario FOREIGN KEY (fk_usuario_id) REFERENCES usuario (id) ON DELETE SET NULL
@@ -142,9 +147,12 @@ CREATE TABLE apolice (
 
 CREATE TABLE parcela_pagamentos (
     id BIGSERIAL PRIMARY KEY,
+    numero_parcela INTEGER,
     valor NUMERIC(10,2) NOT NULL,
     data_vencimento DATE NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'PENDENTE',
+    forma_pagamento VARCHAR(50),
+    data_pagamento DATE,
     fk_apolice_id BIGINT NOT NULL,
     CONSTRAINT fk_parcela_apolice FOREIGN KEY (fk_apolice_id) REFERENCES apolice (id) ON DELETE CASCADE
 );

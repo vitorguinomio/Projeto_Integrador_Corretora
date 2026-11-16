@@ -192,5 +192,22 @@ Este documento registra detalhadamente as entregas efetuadas no repositório Git
   4. `frontend/src/components/LoginView.jsx`, `ClientesTab.jsx`, `CorretoresTab.jsx`, `SegurosTab.jsx`, `CotacoesTab.jsx`, `DashboardTab.jsx`, `RelatoriosTab.jsx`, `AppShell.jsx` e `App.jsx`:
      - Remoção de valores de teste fixos no frontend e aplicação de validação dinâmica de erros em vermelho com ícone `X` e motivo.
 
+---
+
+## [Commit 11] - Script SQL de Dados para Apresentação no PostgreSQL e Execução no Docker
+- **Data/Hora:** 2026-11-16 09:58
+- **Mensagem:** `feat: script sql de carga de dados para apresentacao no postgresql e atualizacao do schema`
+- **O que foi enviado para o Git:**
+  1. `database/init/01-schema.sql`: Atualização do DDL oficial com suporte à extensão `pgcrypto`, coluna `nome` na tabela `usuario`, colunas `especialidade` e `telefone` em `corretor`, e colunas `numero_parcela`, `forma_pagamento` e `data_pagamento` em `parcela_pagamentos`.
+  2. `database/init/02-seed-apresentacao.sql`: Criação do arquivo SQL completo de apresentação carregado automaticamente no container Docker PostgreSQL (`corretora-postgres`), contendo:
+     - 12 usuários (administradores, corretores e clientes ativos e inativos com e-mails corporativos `@hcr.com.br`, `@corretora.com.br`, `@gmail.com`, `@hotmail.com`, `@outlook.com` e senhas criptografadas com BCrypt).
+     - 4 corretores com registros SUSEP, especialidades e contatos.
+     - 6 clientes (Pessoas Físicas e Pessoas Jurídicas) com endereços e telefones vinculados.
+     - 5 produtos de seguros com 13 coberturas detalhadas.
+     - 5 cotações e 4 propostas comerciais em diferentes situações.
+     - 6 apólices (ativas, próximas do vencimento em 14 e 22 dias e canceladas) com 34 parcelas de pagamento registradas (pagas via PIX, Boleto Bancário, Cartão de Crédito/Débito, Transferência/TED e parcelas pendentes para demonstração).
+     - 5 notificações de alerta e 5 registros na trilha de auditoria.
+
+
 
 
