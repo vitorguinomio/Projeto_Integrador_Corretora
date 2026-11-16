@@ -8,5 +8,6 @@ import java.util.List;
 @Repository
 public interface ParcelaPagamentoRepository extends JpaRepository<ParcelaPagamento, Long> {
     List<ParcelaPagamento> findByApoliceId(Long apoliceId);
+    List<ParcelaPagamento> findByApoliceIdOrderByDataVencimentoAscIdAsc(Long apoliceId);
     List<ParcelaPagamento> findByStatus(String status);
 }

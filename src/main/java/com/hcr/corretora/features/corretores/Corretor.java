@@ -17,6 +17,12 @@ public class Corretor {
     @Column(name = "dados_profissionais", nullable = false, length = 50)
     private String dadosProfissionais;
 
+    @Column(name = "especialidade", length = 100)
+    private String especialidade = "Geral";
+
+    @Column(name = "telefone", length = 30)
+    private String telefone;
+
     @Column(nullable = false, length = 20)
     private String status = "ATIVO";
 
@@ -27,9 +33,23 @@ public class Corretor {
     public Corretor() {}
 
     public Corretor(Long id, String nome, String dadosProfissionais, String status, Usuario usuario) {
+        this(id, nome, dadosProfissionais, "Geral", null, status, usuario);
+    }
+
+    public Corretor(
+            Long id,
+            String nome,
+            String dadosProfissionais,
+            String especialidade,
+            String telefone,
+            String status,
+            Usuario usuario
+    ) {
         this.id = id;
         this.nome = nome;
         this.dadosProfissionais = dadosProfissionais;
+        this.especialidade = (especialidade != null && !especialidade.isBlank()) ? especialidade : "Geral";
+        this.telefone = telefone;
         this.status = (status != null && !status.isBlank()) ? status : "ATIVO";
         this.usuario = usuario;
     }
@@ -56,6 +76,22 @@ public class Corretor {
 
     public void setDadosProfissionais(String dadosProfissionais) {
         this.dadosProfissionais = dadosProfissionais;
+    }
+
+    public String getEspecialidade() {
+        return especialidade;
+    }
+
+    public void setEspecialidade(String especialidade) {
+        this.especialidade = especialidade;
+    }
+
+    public String getTelefone() {
+        return telefone;
+    }
+
+    public void setTelefone(String telefone) {
+        this.telefone = telefone;
     }
 
     public String getStatus() {

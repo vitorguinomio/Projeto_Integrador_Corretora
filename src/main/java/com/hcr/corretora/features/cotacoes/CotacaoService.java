@@ -6,12 +6,15 @@ import com.hcr.corretora.features.corretores.Corretor;
 import com.hcr.corretora.features.corretores.CorretorRepository;
 import com.hcr.corretora.features.cotacoes.dto.CotacaoRequest;
 import com.hcr.corretora.features.cotacoes.dto.CotacaoResponse;
+import com.hcr.corretora.features.propostas.PropostaRepository;
+import com.hcr.corretora.features.propostas.dto.PropostaResponse;
 import com.hcr.corretora.features.seguros.Seguro;
 import com.hcr.corretora.features.seguros.SeguroRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -22,17 +25,20 @@ public class CotacaoService {
     private final ClienteRepository clienteRepository;
     private final CorretorRepository corretorRepository;
     private final SeguroRepository seguroRepository;
+    private final PropostaRepository propostaRepository;
 
     public CotacaoService(
             CotacaoRepository cotacaoRepository,
             ClienteRepository clienteRepository,
             CorretorRepository corretorRepository,
-            SeguroRepository seguroRepository
+            SeguroRepository seguroRepository,
+            PropostaRepository propostaRepository
     ) {
         this.cotacaoRepository = cotacaoRepository;
         this.clienteRepository = clienteRepository;
         this.corretorRepository = corretorRepository;
         this.seguroRepository = seguroRepository;
+        this.propostaRepository = propostaRepository;
     }
 
     public List<CotacaoResponse> listar(Long clienteId, Long corretorId, String situacao) {
@@ -70,6 +76,11 @@ public class CotacaoService {
         if (request.corretorId() != null) {
             corretor = corretorRepository.findById(request.corretorId())
                     .orElseThrow(() -> new IllegalArgumentException("Corretor não encontrado com id: " + request.corretorId()));
+        } else {
+            var todosCorretores = corretorRepository.findAll();
+            if (!todosCorretores.isEmpty()) {
+                corretor = todosCorretores.get(0);
+            }
         }
 
         var valor = request.valor() != null ? request.valor() : seguro.getValorBase();
@@ -103,17 +114,47 @@ public class CotacaoService {
     }
 
     public CotacaoResponse toResponse(Cotacao c) {
+        List<PropostaResponse> propostas = new ArrayList<>();
+        propostaRepository.findByCotacaoId(c.getId()).ifPresent(p -> {
+            propostas.add(new PropostaResponse(
+                    p.getId(),
+                    p.getCondicoes(),
+                    p.getSituacao(),
+                    c.getId(),
+                    c.getValor(),
+                    c.getValor(),
+                    c.getDataSolicitacao(),
+                    c.getCliente() != null ? c.getCliente().getId() : null,
+                    c.getCliente() != null ? c.getCliente().getNome() : null,
+                    c.getCorretor() != null ? c.getCorretor().getId() : null,
+                    c.getCorretor() != null ? c.getCorretor().getNome() : null,
+                    c.getSeguro() != null ? c.getSeguro().getId() : null,
+                    c.getSeguro() != null ? c.getSeguro().getNome() : null
+            ));
+        });
+
+        String dataCotacao = c.getDataSolicitacao() != null
+                ? c.getDataSolicitacao().toLocalDate().toString()
+                : "";
+
+        String info = c.getSeguro() != null && c.getSeguro().getDescricao() != null
+                ? c.getSeguro().getDescricao()
+                : "Solicitação de cotação registrada.";
+
         return new CotacaoResponse(
                 c.getId(),
                 c.getDataSolicitacao(),
+                dataCotacao,
                 c.getValor(),
                 c.getSituacao(),
                 c.getCliente() != null ? c.getCliente().getId() : null,
                 c.getCliente() != null ? c.getCliente().getNome() : null,
                 c.getCorretor() != null ? c.getCorretor().getId() : null,
-                c.getCorretor() != null ? c.getCorretor().getNome() : "Pendente de atribuição",
+                c.getCorretor() != null ? c.getCorretor().getNome() : "HCR Corretora",
                 c.getSeguro() != null ? c.getSeguro().getId() : null,
-                c.getSeguro() != null ? c.getSeguro().getNome() : null
+                c.getSeguro() != null ? c.getSeguro().getNome() : null,
+                info,
+                propostas
         );
     }
 }

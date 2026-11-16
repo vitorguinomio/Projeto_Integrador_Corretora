@@ -1,5 +1,9 @@
 package com.hcr.corretora.features.propostas;
 
+import com.hcr.corretora.features.apolices.ApoliceService;
+import com.hcr.corretora.features.apolices.dto.ApoliceRequest;
+import com.hcr.corretora.features.corretores.Corretor;
+import com.hcr.corretora.features.corretores.CorretorRepository;
 import com.hcr.corretora.features.cotacoes.Cotacao;
 import com.hcr.corretora.features.cotacoes.CotacaoRepository;
 import com.hcr.corretora.features.propostas.dto.PropostaRequest;
@@ -7,6 +11,8 @@ import com.hcr.corretora.features.propostas.dto.PropostaResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -15,10 +21,19 @@ public class PropostaService {
 
     private final PropostaRepository propostaRepository;
     private final CotacaoRepository cotacaoRepository;
+    private final CorretorRepository corretorRepository;
+    private final ApoliceService apoliceService;
 
-    public PropostaService(PropostaRepository propostaRepository, CotacaoRepository cotacaoRepository) {
+    public PropostaService(
+            PropostaRepository propostaRepository,
+            CotacaoRepository cotacaoRepository,
+            CorretorRepository corretorRepository,
+            ApoliceService apoliceService
+    ) {
         this.propostaRepository = propostaRepository;
         this.cotacaoRepository = cotacaoRepository;
+        this.corretorRepository = corretorRepository;
+        this.apoliceService = apoliceService;
     }
 
     public List<PropostaResponse> listarTodas() {
@@ -52,6 +67,10 @@ public class PropostaService {
         Cotacao cotacao = cotacaoRepository.findById(request.cotacaoId())
                 .orElseThrow(() -> new IllegalArgumentException("Cotação não encontrada com id: " + request.cotacaoId()));
 
+        if (request.premio() != null) {
+            cotacao.setValor(request.premio());
+        }
+
         Proposta proposta = new Proposta(
                 null,
                 request.condicoes().trim(),
@@ -70,10 +89,39 @@ public class PropostaService {
     public PropostaResponse aceitar(Long id) {
         Proposta proposta = buscarEntidadePorId(id);
         proposta.setSituacao("ACEITA");
-        proposta.getCotacao().setSituacao("APROVADA");
-        cotacaoRepository.save(proposta.getCotacao());
+        Cotacao cotacao = proposta.getCotacao();
+        cotacao.setSituacao("APROVADA");
+        cotacaoRepository.save(cotacao);
 
-        return toResponse(propostaRepository.save(proposta));
+        Proposta salva = propostaRepository.save(proposta);
+
+        // Gera apólice automaticamente ao aceitar proposta
+        if (cotacao.getCliente() != null && cotacao.getSeguro() != null) {
+            Long corretorId = cotacao.getCorretor() != null ? cotacao.getCorretor().getId() : null;
+            if (corretorId == null) {
+                List<Corretor> corretores = corretorRepository.findAll();
+                if (!corretores.isEmpty()) {
+                    corretorId = corretores.get(0).getId();
+                }
+            }
+            if (corretorId != null) {
+                BigDecimal premio = cotacao.getValor() != null ? cotacao.getValor() : cotacao.getSeguro().getValorBase();
+                apoliceService.criar(new ApoliceRequest(
+                        null,
+                        cotacao.getCliente().getId(),
+                        corretorId,
+                        cotacao.getSeguro().getId(),
+                        LocalDate.now(),
+                        LocalDate.now().plusYears(1),
+                        premio,
+                        premio,
+                        "ATIVA",
+                        12
+                ));
+            }
+        }
+
+        return toResponse(salva);
     }
 
     @Transactional
@@ -93,6 +141,7 @@ public class PropostaService {
                 p.getCondicoes(),
                 p.getSituacao(),
                 c != null ? c.getId() : null,
+                c != null ? c.getValor() : null,
                 c != null ? c.getValor() : null,
                 c != null ? c.getDataSolicitacao() : null,
                 c != null && c.getCliente() != null ? c.getCliente().getId() : null,

@@ -1,9 +1,12 @@
 package com.hcr.corretora.features.corretores;
 
+import com.hcr.corretora.features.apolices.Apolice;
+import com.hcr.corretora.features.apolices.ApoliceRepository;
 import com.hcr.corretora.features.corretores.dto.CorretorRequest;
 import com.hcr.corretora.features.corretores.dto.CorretorResponse;
 import com.hcr.corretora.features.usuarios.Usuario;
 import com.hcr.corretora.features.usuarios.UsuarioRepository;
+import com.hcr.corretora.features.usuarios.UsuarioService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,19 +14,23 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Service
+@Transactional(readOnly = true)
 public class CorretorService {
 
     private final CorretorRepository corretorRepository;
     private final UsuarioRepository usuarioRepository;
+    private final ApoliceRepository apoliceRepository;
     private final PasswordEncoder passwordEncoder;
 
     public CorretorService(
             CorretorRepository corretorRepository,
             UsuarioRepository usuarioRepository,
+            ApoliceRepository apoliceRepository,
             PasswordEncoder passwordEncoder
     ) {
         this.corretorRepository = corretorRepository;
         this.usuarioRepository = usuarioRepository;
+        this.apoliceRepository = apoliceRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -45,27 +52,41 @@ public class CorretorService {
 
     @Transactional
     public CorretorResponse criar(CorretorRequest request) {
-        if (corretorRepository.existsByDadosProfissionais(request.dadosProfissionais())) {
-            throw new IllegalArgumentException("Já existe um corretor com o registro: " + request.dadosProfissionais());
+        String susep = request.dadosProfissionais() != null && !request.dadosProfissionais().isBlank()
+                ? request.dadosProfissionais().trim()
+                : (request.registroSusep() != null ? request.registroSusep().trim() : "");
+
+        if (susep.isBlank()) {
+            throw new IllegalArgumentException("O registro SUSEP / dados profissionais é obrigatório.");
         }
 
-        Usuario usuario = null;
-        if (request.email() != null && !request.email().isBlank()) {
-            String email = request.email().trim().toLowerCase();
-            if (usuarioRepository.existsByLoginEmail(email)) {
-                usuario = usuarioRepository.findByLoginEmail(email).orElse(null);
-            } else {
-                String senha = (request.senha() != null && !request.senha().isBlank()) ? request.senha() : "corretor123";
-                usuario = new Usuario(null, email, passwordEncoder.encode(senha), "CORRETOR", "ATIVO");
-                usuario = usuarioRepository.save(usuario);
-            }
+        if (corretorRepository.existsByDadosProfissionais(susep)) {
+            throw new IllegalArgumentException("Já existe um corretor cadastrado com o registro SUSEP: " + susep);
         }
+
+        UsuarioService.validarFormatoEmail(request.email());
+        String email = request.email().trim().toLowerCase();
+
+        Usuario usuario;
+        if (usuarioRepository.existsByLoginEmail(email)) {
+            usuario = usuarioRepository.findByLoginEmail(email).orElse(null);
+        } else {
+            String senha = (request.senha() != null && !request.senha().isBlank()) ? request.senha() : "corretor123";
+            usuario = new Usuario(null, request.nome().trim(), email, passwordEncoder.encode(senha), "CORRETOR", "ATIVO");
+            usuario = usuarioRepository.save(usuario);
+        }
+
+        String statusNorm = request.status() != null && !request.status().isBlank()
+                ? request.status().trim().toUpperCase()
+                : "ATIVO";
 
         Corretor corretor = new Corretor(
                 null,
                 request.nome().trim(),
-                request.dadosProfissionais().trim(),
-                request.status() != null ? request.status() : "ATIVO",
+                susep,
+                request.especialidade(),
+                request.telefone(),
+                statusNorm,
                 usuario
         );
 
@@ -77,28 +98,40 @@ public class CorretorService {
     public CorretorResponse atualizar(Long id, CorretorRequest request) {
         Corretor corretor = buscarEntidadePorId(id);
 
-        if (!corretor.getDadosProfissionais().equals(request.dadosProfissionais())
-                && corretorRepository.existsByDadosProfissionais(request.dadosProfissionais())) {
-            throw new IllegalArgumentException("Já existe outro corretor com o registro: " + request.dadosProfissionais());
+        String susep = request.dadosProfissionais() != null && !request.dadosProfissionais().isBlank()
+                ? request.dadosProfissionais().trim()
+                : (request.registroSusep() != null ? request.registroSusep().trim() : corretor.getDadosProfissionais());
+
+        if (!corretor.getDadosProfissionais().equals(susep)
+                && corretorRepository.existsByDadosProfissionais(susep)) {
+            throw new IllegalArgumentException("Já existe outro corretor com o registro: " + susep);
         }
 
         corretor.setNome(request.nome().trim());
-        corretor.setDadosProfissionais(request.dadosProfissionais().trim());
-        if (request.status() != null) {
-            corretor.setStatus(request.status());
+        corretor.setDadosProfissionais(susep);
+        if (request.especialidade() != null && !request.especialidade().isBlank()) {
+            corretor.setEspecialidade(request.especialidade().trim());
+        }
+        if (request.telefone() != null) {
+            corretor.setTelefone(request.telefone().trim());
+        }
+        if (request.status() != null && !request.status().isBlank()) {
+            corretor.setStatus(request.status().trim().toUpperCase());
         }
 
         if (request.email() != null && !request.email().isBlank()) {
+            UsuarioService.validarFormatoEmail(request.email());
             String email = request.email().trim().toLowerCase();
             if (corretor.getUsuario() != null) {
                 corretor.getUsuario().setLoginEmail(email);
+                corretor.getUsuario().setNome(corretor.getNome());
                 if (request.senha() != null && !request.senha().isBlank()) {
                     corretor.getUsuario().setSenha(passwordEncoder.encode(request.senha()));
                 }
                 usuarioRepository.save(corretor.getUsuario());
             } else {
                 String senha = (request.senha() != null && !request.senha().isBlank()) ? request.senha() : "corretor123";
-                Usuario novo = new Usuario(null, email, passwordEncoder.encode(senha), "CORRETOR", "ATIVO");
+                Usuario novo = new Usuario(null, corretor.getNome(), email, passwordEncoder.encode(senha), "CORRETOR", "ATIVO");
                 novo = usuarioRepository.save(novo);
                 corretor.setUsuario(novo);
             }
@@ -119,13 +152,28 @@ public class CorretorService {
     }
 
     public CorretorResponse toResponse(Corretor corretor) {
+        List<Apolice> apolicesCorretor = apoliceRepository.findByCorretorId(corretor.getId());
+        long totalApolices = apolicesCorretor.stream()
+                .filter(a -> "ATIVA".equalsIgnoreCase(a.getSituacao()) || "EM_RENOVACAO".equalsIgnoreCase(a.getSituacao()))
+                .count();
+        long totalClientes = apolicesCorretor.stream()
+                .filter(a -> a.getCliente() != null)
+                .map(a -> a.getCliente().getId())
+                .distinct()
+                .count();
+
         return new CorretorResponse(
                 corretor.getId(),
                 corretor.getNome(),
                 corretor.getDadosProfissionais(),
+                corretor.getDadosProfissionais(),
+                corretor.getEspecialidade() != null ? corretor.getEspecialidade() : "Geral",
+                corretor.getTelefone(),
                 corretor.getStatus(),
                 corretor.getUsuario() != null ? corretor.getUsuario().getId() : null,
-                corretor.getUsuario() != null ? corretor.getUsuario().getLoginEmail() : null
+                corretor.getUsuario() != null ? corretor.getUsuario().getLoginEmail() : null,
+                totalClientes,
+                totalApolices
         );
     }
 }

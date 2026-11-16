@@ -157,3 +157,21 @@ Este documento registra detalhadamente as entregas efetuadas no repositório Git
   4. `features/alertas/AlertaService.java`: Anotação `@Transactional(readOnly = true)` para consulta consistente de notificações e vínculo com o usuário.
   5. `features/auditoria/AuditoriaService.java`: Anotação `@Transactional(readOnly = true)` para consulta e listagem ordenada de logs de auditoria do sistema.
 
+---
+
+## [Commit 9] - Ajustes Backend: Parcelas com Tipo de Pagamento, Renovação Mantendo Data do 1º Contrato, Ativação de Usuários e Validação de E-mail
+- **Data/Hora:** 2026-11-16 09:40
+- **Mensagem:** `fix: pagamento de parcelas com forma de pagamento, renovacao mantendo data inicial do 1o contrato, ativacao de usuarios e validacao de email`
+- **O que foi enviado para o Git:**
+  1. `features/apolices`:
+     - `ParcelaPagamento.java` e `ParcelaPagamentoRepository.java`: Inclusão dos campos `numeroParcela`, `formaPagamento` (PIX, Boleto, Cartão de Crédito/Débito, Transferência, Dinheiro) e `dataPagamento`, além de ordenação cronológica.
+     - `ParcelaResponse.java` e `AtualizarParcelaRequest.java`: Suporte completo ao tipo de pagamento (`formaPagamento` / `tipoPagamento`) e data de quitação.
+     - `RenovacaoRequest.java` e `ApoliceService.java`: Remoção da obrigatoriedade de nova data de início na renovação, preservando automaticamente a `dataInicio` do 1º contrato original da apólice (`primeiroContrato.getDataInicio()`).
+     - `ApoliceController.java`: Suporte aos endpoints `POST /apolices/parcelas/{parcelaId}/pagar` e `PATCH /apolices/parcelas/{parcelaId}`.
+  2. `features/usuarios` e `features/auth`:
+     - `Usuario.java`, `UsuarioCreateRequest.java`, `UsuarioResponse.java`, `UsuarioService.java` e `UsuarioController.java`: Suporte funcional à ativação e desativação de usuários (`PUT`/`PATCH`/`POST` em `/usuarios/{id}/status`), sincronização com status do corretor e validação rigorosa de e-mail exigindo `@` e domínio válido (`.com`, `.com.br`, etc.) aceitando qualquer provedor corporativo ou pessoal (Gmail, Hotmail, Outlook, domínio empresarial).
+     - `AuthService.java`: Validação de formato de e-mail e bloqueio de acesso para usuários inativos com mensagem explicativa.
+  3. `features/corretores`, `features/seguros`, `features/cotacoes`, `features/propostas`, `features/alertas` e `features/clientes`:
+     - Compatibilização completa dos DTOs de requisição/resposta com o frontend e geração automática de apólice e parcelas ao aceitar proposta.
+
+

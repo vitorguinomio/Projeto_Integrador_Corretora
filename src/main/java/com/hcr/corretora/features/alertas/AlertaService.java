@@ -23,11 +23,6 @@ public class AlertaService {
     }
 
     public List<NotificacaoResponse> listarPorUsuario(String email) {
-        if (email != null && !email.isBlank()) {
-            return notificacaoAlertaRepository.findByUsuarioLoginEmailOrderByDataCriacaoDesc(email).stream()
-                    .map(this::toResponse)
-                    .toList();
-        }
         return notificacaoAlertaRepository.findAll().stream()
                 .map(this::toResponse)
                 .toList();
@@ -66,10 +61,19 @@ public class AlertaService {
     }
 
     public NotificacaoResponse toResponse(NotificacaoAlerta a) {
+        String assunto = a.getAssunto() != null ? a.getAssunto() : "Notificação do sistema";
+        boolean isVencimento = assunto.toLowerCase().contains("vence") || assunto.toLowerCase().contains("vencimento") || assunto.toLowerCase().contains("renova");
+        String titulo = isVencimento ? "Alerta de Vigência / Renovação" : "Notificação do Sistema";
+        boolean lido = "LIDA".equalsIgnoreCase(a.getStatus()) || "LIDO".equalsIgnoreCase(a.getStatus());
+
         return new NotificacaoResponse(
                 a.getId(),
-                a.getAssunto(),
+                assunto,
+                titulo,
+                assunto,
+                isVencimento ? "VENCIMENTO" : "SISTEMA",
                 a.getStatus(),
+                lido,
                 a.getDataCriacao(),
                 a.getUsuario() != null ? a.getUsuario().getId() : null,
                 a.getUsuario() != null ? a.getUsuario().getLoginEmail() : null

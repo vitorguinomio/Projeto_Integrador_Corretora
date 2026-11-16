@@ -14,5 +14,7 @@ public record CotacaoRequest(
 
         BigDecimal valor,
 
-        String situacao
+        String situacao,
+
+        String informacoesAdicionais
 ) {}

@@ -14,6 +14,7 @@ import com.hcr.corretora.features.clientes.dto.TelefoneDto;
 import com.hcr.corretora.features.corretores.CorretorRepository;
 import com.hcr.corretora.features.usuarios.Usuario;
 import com.hcr.corretora.features.usuarios.UsuarioRepository;
+import com.hcr.corretora.features.usuarios.UsuarioService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Service
+@Transactional(readOnly = true)
 public class AuthService {
 
     private final UsuarioRepository usuarioRepository;
@@ -48,16 +50,17 @@ public class AuthService {
     }
 
     public LoginResponse autenticar(LoginRequest loginRequest) {
+        UsuarioService.validarFormatoEmail(loginRequest.email());
         String email = loginRequest.email().trim().toLowerCase();
         Usuario usuario = usuarioRepository.findByLoginEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("Credenciais inválidas: e-mail ou senha incorretos"));
+                .orElseThrow(() -> new IllegalArgumentException("Credenciais inválidas: e-mail não encontrado no sistema."));
 
         if (!passwordEncoder.matches(loginRequest.senha(), usuario.getSenha())) {
-            throw new IllegalArgumentException("Credenciais inválidas: e-mail ou senha incorretos");
+            throw new IllegalArgumentException("Credenciais inválidas: a senha informada está incorreta.");
         }
 
         if (!"ATIVO".equalsIgnoreCase(usuario.getStatus())) {
-            throw new IllegalArgumentException("Usuário desativado. Contate o administrador do sistema.");
+            throw new IllegalArgumentException("Acesso bloqueado: este usuário encontra-se DESATIVADO. Contate o administrador.");
         }
 
         String nome = obterNomePorUsuario(usuario);
@@ -76,6 +79,7 @@ public class AuthService {
 
     @Transactional
     public LoginResponse registrar(RegisterRequest request) {
+        UsuarioService.validarFormatoEmail(request.email());
         String email = request.email().trim().toLowerCase();
         if (usuarioRepository.existsByLoginEmail(email)) {
             throw new IllegalArgumentException("Já existe um usuário com o e-mail: " + email);
@@ -87,6 +91,7 @@ public class AuthService {
 
         Usuario usuario = new Usuario(
                 null,
+                request.nome().trim(),
                 email,
                 passwordEncoder.encode(request.senha()),
                 "CLIENTE",
@@ -170,6 +175,9 @@ public class AuthService {
     }
 
     private String obterNomePorUsuario(Usuario usuario) {
+        if (usuario.getNome() != null && !usuario.getNome().isBlank()) {
+            return usuario.getNome();
+        }
         if ("ADMINISTRADOR".equalsIgnoreCase(usuario.getPerfilAcesso())) {
             return administradorRepository.findByUsuarioId(usuario.getId())
                     .map(a -> a.getNome())

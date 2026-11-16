@@ -1,19 +1,22 @@
 package com.hcr.corretora.features.corretores.dto;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
 public record CorretorRequest(
-        @NotBlank(message = "O nome é obrigatório")
+        @NotBlank(message = "O nome do corretor é obrigatório")
         String nome,
 
-        @NotBlank(message = "Os dados profissionais / registro SUSEP são obrigatórios")
         String dadosProfissionais,
+
+        String registroSusep,
+
+        String especialidade,
+
+        String telefone,
 
         String status,
 
-        @NotBlank(message = "O e-mail é obrigatório")
-        @Email(message = "E-mail inválido")
+        @NotBlank(message = "O e-mail corporativo é obrigatório")
         String email,
 
         String senha

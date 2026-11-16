@@ -38,7 +38,7 @@ public class AlertaController {
         return ResponseEntity.status(HttpStatus.CREATED).body(criada);
     }
 
-    @PatchMapping("/{id}/ler")
+    @RequestMapping(value = {"/{id}/ler", "/{id}/lido"}, method = {RequestMethod.PATCH, RequestMethod.PUT, RequestMethod.POST})
     public ResponseEntity<NotificacaoResponse> marcarComoLida(@PathVariable Long id) {
         return ResponseEntity.ok(alertaService.marcarComoLida(id));
     }

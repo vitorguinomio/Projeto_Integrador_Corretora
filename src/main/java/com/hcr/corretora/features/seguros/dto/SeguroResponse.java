@@ -8,6 +8,8 @@ public record SeguroResponse(
         String nome,
         String descricao,
         String caracteristicas,
+        String tipo,
         BigDecimal valorBase,
+        BigDecimal premioBase,
         List<CoberturaDto> coberturas
 ) {}

@@ -8,12 +8,15 @@ public record SeguroRequest(
         @NotBlank(message = "O nome do seguro é obrigatório")
         String nome,
 
-        @NotBlank(message = "A descrição do seguro é obrigatória")
         String descricao,
 
         String caracteristicas,
 
+        String tipo,
+
         BigDecimal valorBase,
+
+        BigDecimal premioBase,
 
         List<CoberturaDto> coberturas
 ) {}

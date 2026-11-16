@@ -11,6 +11,7 @@ public record ApoliceResponse(
         LocalDate dataTermino,
         String situacao,
         BigDecimal valorPremio,
+        BigDecimal premio,
         Long clienteId,
         String clienteNome,
         Long corretorId,

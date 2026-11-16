@@ -36,15 +36,36 @@ public class UsuarioController {
         return ResponseEntity.status(HttpStatus.CREATED).body(criado);
     }
 
-    @PatchMapping("/{id}/status")
-    public ResponseEntity<UsuarioResponse> alterarStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
-        String status = body.getOrDefault("status", "ATIVO");
-        return ResponseEntity.ok(usuarioService.alterarStatus(id, status));
+    @RequestMapping(value = "/{id}/status", method = {RequestMethod.PATCH, RequestMethod.PUT, RequestMethod.POST})
+    public ResponseEntity<UsuarioResponse> alterarStatus(
+            @PathVariable Long id,
+            @RequestParam(required = false) Boolean ativo,
+            @RequestParam(required = false) String status,
+            @RequestBody(required = false) Map<String, Object> body
+    ) {
+        String novoStatus = null;
+        if (ativo != null) {
+            novoStatus = ativo ? "ATIVO" : "INATIVO";
+        } else if (status != null && !status.isBlank()) {
+            novoStatus = status;
+        } else if (body != null) {
+            if (body.get("ativo") != null) {
+                boolean isAtivo = Boolean.parseBoolean(String.valueOf(body.get("ativo")));
+                novoStatus = isAtivo ? "ATIVO" : "INATIVO";
+            } else if (body.get("status") != null) {
+                novoStatus = String.valueOf(body.get("status"));
+            }
+        }
+        if (novoStatus == null) {
+            Usuario atual = usuarioService.buscarEntidadePorId(id);
+            novoStatus = "ATIVO".equalsIgnoreCase(atual.getStatus()) ? "INATIVO" : "ATIVO";
+        }
+        return ResponseEntity.ok(usuarioService.alterarStatus(id, novoStatus));
     }
 
-    @PatchMapping("/{id}/perfil")
+    @RequestMapping(value = "/{id}/perfil", method = {RequestMethod.PATCH, RequestMethod.PUT})
     public ResponseEntity<UsuarioResponse> alterarPerfil(@PathVariable Long id, @RequestBody Map<String, String> body) {
-        String perfil = body.getOrDefault("perfil", "CLIENTE");
+        String perfil = body.getOrDefault("perfil", body.getOrDefault("perfilAcesso", "CLIENTE"));
         return ResponseEntity.ok(usuarioService.alterarPerfil(id, perfil));
     }
 }

@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/apolices")
@@ -45,7 +46,10 @@ public class ApoliceController {
     }
 
     @PostMapping("/{id}/cancelar")
-    public ResponseEntity<ApoliceResponse> cancelar(@PathVariable Long id) {
+    public ResponseEntity<ApoliceResponse> cancelar(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, Object> body
+    ) {
         return ResponseEntity.ok(apoliceService.cancelar(id));
     }
 
@@ -62,8 +66,23 @@ public class ApoliceController {
     @PatchMapping("/parcelas/{parcelaId}")
     public ResponseEntity<ParcelaResponse> atualizarParcela(
             @PathVariable Long parcelaId,
-            @Valid @RequestBody AtualizarParcelaRequest request
+            @RequestBody(required = false) AtualizarParcelaRequest request
     ) {
-        return ResponseEntity.ok(apoliceService.atualizarStatusParcela(parcelaId, request.status()));
+        return ResponseEntity.ok(apoliceService.atualizarStatusParcela(parcelaId, request));
+    }
+
+    @PostMapping("/parcelas/{parcelaId}/pagar")
+    public ResponseEntity<ParcelaResponse> pagarParcela(
+            @PathVariable Long parcelaId,
+            @RequestBody(required = false) AtualizarParcelaRequest request
+    ) {
+        AtualizarParcelaRequest req = request != null
+                ? new AtualizarParcelaRequest(
+                        request.status() != null ? request.status() : "PAGO",
+                        request.formaPagamento(),
+                        request.tipoPagamento()
+                )
+                : new AtualizarParcelaRequest("PAGO", "PIX", "PIX");
+        return ResponseEntity.ok(apoliceService.atualizarStatusParcela(parcelaId, req));
     }
 }

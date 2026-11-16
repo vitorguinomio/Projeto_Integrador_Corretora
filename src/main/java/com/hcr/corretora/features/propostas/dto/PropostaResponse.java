@@ -9,6 +9,7 @@ public record PropostaResponse(
         String situacao,
         Long cotacaoId,
         BigDecimal valorCotacao,
+        BigDecimal premio,
         LocalDateTime dataSolicitacao,
         Long clienteId,
         String clienteNome,

@@ -24,6 +24,8 @@ public record ApoliceRequest(
 
         BigDecimal valorPremio,
 
+        BigDecimal premio,
+
         String situacao,
 
         Integer quantidadeParcelas
