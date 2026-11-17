@@ -38,7 +38,8 @@ CREATE TABLE seguro (
     nome VARCHAR(100) NOT NULL,
     descricao TEXT NOT NULL,
     caracteristicas TEXT,
-    valor_base NUMERIC(10,2) DEFAULT 0.00
+    valor_base NUMERIC(10,2) DEFAULT 0.00,
+    percentual_comissao NUMERIC(5,2) DEFAULT 0.00
 );
 
 -- 2. Criação das Tabelas de Atores (Dependentes de Usuario)
@@ -64,10 +65,16 @@ CREATE TABLE corretor (
     id BIGSERIAL PRIMARY KEY,
     nome VARCHAR(100) NOT NULL,
     dados_profissionais VARCHAR(50) NOT NULL,
+    especialidade VARCHAR(100),
+    telefone VARCHAR(20),
     status VARCHAR(20) NOT NULL DEFAULT 'ATIVO',
     fk_usuario_id BIGINT UNIQUE,
     CONSTRAINT fk_corretor_usuario FOREIGN KEY (fk_usuario_id) REFERENCES usuario (id) ON DELETE SET NULL
 );
+
+-- Vínculo cliente -> corretor responsável (RF19)
+ALTER TABLE cliente ADD COLUMN fk_corretor_id BIGINT;
+ALTER TABLE cliente ADD CONSTRAINT fk_cliente_corretor FOREIGN KEY (fk_corretor_id) REFERENCES corretor (id) ON DELETE SET NULL;
 
 -- 3. Criação das Tabelas Satélites e de Produtos
 CREATE TABLE endereco (
@@ -130,6 +137,8 @@ CREATE TABLE apolice (
     data_termino DATE NOT NULL,
     situacao VARCHAR(50) NOT NULL DEFAULT 'ATIVA',
     valor_premio NUMERIC(10,2) DEFAULT 0.00,
+    motivo_cancelamento VARCHAR(255),
+    data_cancelamento DATE,
     fk_cliente_id BIGINT NOT NULL,
     fk_corretor_id BIGINT NOT NULL,
     fk_seguro_id BIGINT NOT NULL,

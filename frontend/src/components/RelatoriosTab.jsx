@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { PageHeader, StatCard, SectionCard } from './ui/UiBits';
 import { apiFetch } from '../api';
-
+import { dataLocalISO, mapApolice, mapCliente, mapCotacao, mapSeguro } from '../mappers';
 export const RelatoriosTab = ({ currentUser, currentRole }) => {
   const [apolices, setApolices] = useState([]);
   const [clientes, setClientes] = useState([]);
@@ -23,38 +23,37 @@ export const RelatoriosTab = ({ currentUser, currentRole }) => {
   useEffect(() => {
     loadData();
   }, []);
-
   const loadData = async () => {
     try {
       setLoading(true);
-      const [apolicesData, clientesData, corretoresData, segurosData, cotacoesData] = await Promise.all([
+      const [apolicesData, clientesData, corretoresData, segurosData, cotacoesData, propostasData] = await Promise.all([
         apiFetch('/apolices').catch(() => []),
         apiFetch('/clientes').catch(() => []),
         apiFetch('/corretores').catch(() => []),
         apiFetch('/seguros').catch(() => []),
-        apiFetch('/cotacoes').catch(() => [])
+        apiFetch('/cotacoes').catch(() => []),
+        apiFetch('/propostas').catch(() => [])
       ]);
-      setApolices(apolicesData || []);
-      setClientes(clientesData || []);
+      const apolicesView = (apolicesData || []).map(mapApolice);
+      setApolices(apolicesView);
+      setClientes((clientesData || []).map((c) => mapCliente(c, apolicesView)));
       setCorretores(corretoresData || []);
-      setSeguros(segurosData || []);
-      setCotacoes(cotacoesData || []);
+      setSeguros((segurosData || []).map(mapSeguro));
+      setCotacoes((cotacoesData || []).map((c) => mapCotacao(c, propostasData || [])));
     } catch (err) {
       console.error('Erro ao carregar relatórios:', err);
     } finally {
       setLoading(false);
     }
   };
-
-  const ativas = apolices.filter((a) => a.situacao === 'Ativa' || a.situacao === 'Em renovação');
+  // Mesmo critério do DashboardService: apenas apólices ATIVA compõem a carteira
+  const ativas = apolices.filter((a) => a.situacaoCodigo === 'ATIVA');
   const carteiraAtiva = ativas.reduce((acc, curr) => acc + (Number(curr.premio) || 0), 0);
-
   // Conversão de propostas
   const todasPropostas = cotacoes.flatMap((c) => c.propostas || []);
   const respondidas = todasPropostas.filter((p) => p.situacao !== 'Pendente');
   const aceitas = respondidas.filter((p) => p.situacao === 'Aceita');
-  const taxaConversao = respondidas.length > 0 ? Math.round((aceitas.length / respondidas.length) * 100) : 67;
-
+  const taxaConversao = respondidas.length > 0 ? Math.round((aceitas.length / respondidas.length) * 100) : 0;
   // Situação das apólices
   const situacoesMap = apolices.reduce((acc, curr) => {
     acc[curr.situacao] = (acc[curr.situacao] || 0) + 1;
@@ -63,7 +62,7 @@ export const RelatoriosTab = ({ currentUser, currentRole }) => {
 
   const situacoesColors = {
     'Ativa': 'bg-success',
-    'Em renovação': 'bg-signal',
+    'Em renovação': 'bg-warning',
     'Cancelada': 'bg-danger',
     'Vencida': 'bg-muted-foreground'
   };
@@ -122,14 +121,14 @@ export const RelatoriosTab = ({ currentUser, currentRole }) => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `relatorio_apolices_hcr_${new Date().toISOString().substring(0, 10)}.csv`);
+    link.setAttribute('download', `relatorio_apolices_hcr_${dataLocalISO()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   return (
-    <div className="space-y-6 animate-rise">
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <PageHeader
         eyebrow="Gestão"
@@ -153,7 +152,7 @@ export const RelatoriosTab = ({ currentUser, currentRole }) => {
           value={formatCurrency(carteiraAtiva)}
           hint="soma dos prêmios anuais vigentes"
           icon={ArrowUpRight}
-          tone="signal"
+          tone="destaque"
         />
         <StatCard
           label="Clientes"
@@ -215,7 +214,7 @@ export const RelatoriosTab = ({ currentUser, currentRole }) => {
                         <span className={`size-2.5 rounded-full ${colorClass}`} />
                         {sit}
                       </span>
-                      <span className="tabular font-semibold text-foreground">
+                      <span className="tabular-nums font-semibold text-foreground">
                         {qtd} ({percent}%)
                       </span>
                     </div>
@@ -246,11 +245,11 @@ export const RelatoriosTab = ({ currentUser, currentRole }) => {
               </span>
               <div className="h-2.5 overflow-hidden rounded-full bg-muted">
                 <div
-                  className="block h-full rounded-full bg-gradient-signal"
+                  className="block h-full rounded-full bg-primary"
                   style={{ width: `${Math.max(10, (seg.premio / maxSeguroPremio) * 100)}%` }}
                 />
               </div>
-              <span className="text-right tabular font-mono text-xs font-semibold text-foreground">
+              <span className="text-right tabular-nums font-mono text-xs font-semibold text-foreground">
                 {formatCurrency(seg.premio)}
               </span>
             </li>

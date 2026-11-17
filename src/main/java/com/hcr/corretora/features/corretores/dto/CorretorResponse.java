@@ -4,6 +4,8 @@ public record CorretorResponse(
         Long id,
         String nome,
         String dadosProfissionais,
+        String especialidade,
+        String telefone,
         String status,
         Long usuarioId,
         String email

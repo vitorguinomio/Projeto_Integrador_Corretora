@@ -20,6 +20,8 @@ public interface ApoliceRepository extends JpaRepository<Apolice, Long> {
 
     List<Apolice> findByDataTerminoBetweenAndSituacao(LocalDate inicio, LocalDate fim, String situacao);
 
+    List<Apolice> findBySituacaoInAndDataTerminoBefore(List<String> situacoes, LocalDate data);
+
     long countBySituacao(String situacao);
 
     @Query("SELECT a FROM Apolice a WHERE " +

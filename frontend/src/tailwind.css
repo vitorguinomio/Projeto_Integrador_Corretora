@@ -1,0 +1,102 @@
+/*
+ * Estilo da HCR Corretora de Seguros.
+ *
+ * O Tailwind CSS gera, no build, apenas as classes usadas nos arquivos .jsx.
+ * Os tokens abaixo (@theme) viram classes como bg-primary, text-muted-foreground,
+ * border-border etc. e também variáveis CSS (--color-primary, ...) que podem ser
+ * usadas em estilos inline.
+ */
+@import "tailwindcss";
+
+@theme {
+  /* Superfícies e texto */
+  --color-background: oklch(98% 0.002 260);
+  --color-foreground: oklch(21% 0.02 260);
+  --color-card: oklch(100% 0 0);
+  --color-muted: oklch(96.5% 0.004 260);
+  --color-muted-foreground: oklch(51% 0.018 260);
+
+  /* Bordas e campos */
+  --color-border: oklch(92% 0.005 260);
+  --color-input: oklch(88.5% 0.007 260);
+  --color-ring: oklch(60% 0.14 258);
+
+  /* Marca (azul) */
+  --color-primary: oklch(48% 0.16 258);
+  --color-primary-foreground: oklch(99% 0 0);
+  --color-accent: oklch(95.5% 0.022 258);
+  --color-accent-foreground: oklch(42% 0.14 258);
+
+  /* Estados */
+  --color-success: oklch(52% 0.13 155);
+  --color-success-soft: oklch(95.5% 0.04 155);
+  --color-warning: oklch(58% 0.14 60);
+  --color-warning-soft: oklch(96% 0.05 85);
+  --color-danger: oklch(55% 0.2 27);
+  --color-danger-soft: oklch(95.5% 0.03 25);
+
+  /* Tipografia (carregada do Google Fonts no index.html) */
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Entrada discreta das telas e modais.
+   * "backwards" (e não "both"): ao terminar, a animação não deixa o elemento numa
+   * camada própria — senão os modais dentro dele não cobririam o menu lateral. */
+  --animate-fade-in: fade-in 0.18s ease-out backwards;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+@layer base {
+  /* Toda borda usa a cor do tema, a menos que a classe defina outra */
+  *,
+  ::before,
+  ::after,
+  ::backdrop {
+    border-color: var(--color-border);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.015em;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  ::selection {
+    background: oklch(48% 0.16 258 / 0.18);
+  }
+
+  /* Foco visível e consistente em todos os campos de formulário */
+  :where(input, select, textarea):focus-visible {
+    outline: none;
+    border-color: var(--color-ring);
+    box-shadow: 0 0 0 3px oklch(60% 0.14 258 / 0.18);
+  }
+
+  :where(input, select, textarea)::placeholder {
+    color: var(--color-muted-foreground);
+    opacity: 0.8;
+  }
+}

@@ -47,6 +47,11 @@ public class SeguroController {
         return ResponseEntity.status(HttpStatus.CREATED).body(criada);
     }
 
+    @PutMapping("/coberturas/{coberturaId}")
+    public ResponseEntity<CoberturaDto> atualizarCobertura(@PathVariable Long coberturaId, @Valid @RequestBody CoberturaDto dto) {
+        return ResponseEntity.ok(seguroService.atualizarCobertura(coberturaId, dto));
+    }
+
     @DeleteMapping("/coberturas/{coberturaId}")
     public ResponseEntity<Void> removerCobertura(@PathVariable Long coberturaId) {
         seguroService.removerCobertura(coberturaId);

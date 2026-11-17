@@ -11,10 +11,13 @@ import {
   Shield,
   AlertCircle
 } from 'lucide-react';
-import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal } from './ui/UiBits';
+import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal, useFeedback } from './ui/UiBits';
 import { apiFetch } from '../api';
-
+import { pode } from '../permissoes';
+import { mapCotacao, mapProposta, mapSeguro } from '../mappers';
 export const CotacoesTab = ({ currentUser, currentRole }) => {
+  const isCliente = currentRole === 'cliente';
+  const { showSuccess, showError, showWarning, showInfo } = useFeedback();
   const [cotacoes, setCotacoes] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [seguros, setSeguros] = useState([]);
@@ -24,14 +27,12 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
   const [isNewCotacaoOpen, setIsNewCotacaoOpen] = useState(false);
   const [isNewPropostaOpen, setIsNewPropostaOpen] = useState(false);
   const [selectedCotacao, setSelectedCotacao] = useState(null);
-
   // Form Nova Cotação
   const [cotacaoForm, setCotacaoForm] = useState({
     clienteId: '',
     seguroId: '',
-    informacoesAdicionais: ''
+    valor: ''
   });
-
   // Form Nova Proposta
   const [propostaForm, setPropostaForm] = useState({
     premio: '',
@@ -41,24 +42,25 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
   useEffect(() => {
     loadData();
   }, []);
-
   const loadData = async () => {
     try {
       setLoading(true);
-      const [cotacoesData, clientesData, segurosData] = await Promise.all([
+      const [cotacoesData, propostasData, clientesData, segurosData] = await Promise.all([
         apiFetch('/cotacoes').catch(() => []),
-        apiFetch('/clientes').catch(() => []),
+        apiFetch('/propostas').catch(() => []),
+        isCliente ? [] : apiFetch('/clientes').catch(() => []),
         apiFetch('/seguros').catch(() => [])
       ]);
-      setCotacoes(cotacoesData || []);
+      setCotacoes((cotacoesData || []).map((c) => mapCotacao(c, propostasData || [])));
       setClientes(clientesData || []);
-      setSeguros(segurosData || []);
-
-      if (clientesData?.length && segurosData?.length) {
+      setSeguros((segurosData || []).map(mapSeguro));
+      // O cliente solicita cotação sempre para si mesmo
+      const clientePadrao = isCliente ? currentUser?.clienteId : clientesData?.[0]?.id;
+      if (clientePadrao && segurosData?.length) {
         setCotacaoForm({
-          clienteId: clientesData[0].id,
+          clienteId: clientePadrao,
           seguroId: segurosData[0].id,
-          informacoesAdicionais: ''
+          valor: segurosData[0].valorBase ?? ''
         });
       }
     } catch (err) {
@@ -71,69 +73,64 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
   const handleCreateCotacao = async (e) => {
     e.preventDefault();
     if (!cotacaoForm.clienteId || !cotacaoForm.seguroId) {
-      alert('Selecione cliente e seguro.');
+      showWarning('Selecione o cliente e o seguro para registrar a cotação.', 'Campos obrigatórios');
       return;
     }
     try {
+      const seguro = seguros.find((s) => String(s.id) === String(cotacaoForm.seguroId));
+      // Formato de CotacaoRequest (backend): o corretor é o usuário logado, quando for corretor
       const payload = {
         clienteId: Number(cotacaoForm.clienteId),
         seguroId: Number(cotacaoForm.seguroId),
-        informacoesAdicionais: cotacaoForm.informacoesAdicionais || 'Solicitação de cotação padrão.'
+        corretorId: currentUser?.corretorId ?? null,
+        valor: cotacaoForm.valor !== '' ? Number(cotacaoForm.valor) : seguro?.premioBase ?? null,
+        situacao: 'SOLICITADA'
       };
-
       const nova = await apiFetch('/cotacoes', {
         method: 'POST',
         body: JSON.stringify(payload)
       });
-
-      setCotacoes([nova, ...cotacoes]);
+      setCotacoes([mapCotacao(nova), ...cotacoes]);
       setIsNewCotacaoOpen(false);
-      setCotacaoForm((prev) => ({ ...prev, informacoesAdicionais: '' }));
-      alert('Cotação registrada com sucesso!');
+      setCotacaoForm((prev) => ({ ...prev, valor: '' }));
+      showSuccess('A cotação foi registrada com sucesso.', 'Cotação registrada!');
     } catch (err) {
-      alert(`Erro ao registrar cotação: ${err.message}`);
+      showError(err.message, 'Erro ao registrar cotação');
     }
   };
-
   const handleOpenElaborarProposta = (cotacao) => {
     setSelectedCotacao(cotacao);
     const seg = seguros.find((s) => s.nome === cotacao.seguroNome);
     setPropostaForm({
-      premio: seg?.premioBase || 2500,
+      premio: cotacao.valor || seg?.premioBase || 0,
       condicoes: 'Cobertura total e assistência 24h com franquia reduzida.'
     });
     setIsNewPropostaOpen(true);
   };
-
   const handleCreateProposta = async (e) => {
     e.preventDefault();
-    if (!propostaForm.premio) {
-      alert('Informe o valor do prêmio.');
-      return;
-    }
     try {
+      // Formato de PropostaRequest (backend); o valor da proposta é o valor da cotação
       const payload = {
         cotacaoId: selectedCotacao.id,
-        premio: Number(propostaForm.premio),
-        condicoes: propostaForm.condicoes
+        condicoes: propostaForm.condicoes,
+        situacao: 'PENDENTE'
       };
-
       const novaProp = await apiFetch('/propostas', {
         method: 'POST',
         body: JSON.stringify(payload)
       });
-
       // Atualiza na cotação
       const updated = cotacoes.map((c) =>
         c.id === selectedCotacao.id
-          ? { ...c, situacao: 'Em análise', propostas: [...(c.propostas || []), novaProp] }
+          ? { ...c, propostas: [...(c.propostas || []), mapProposta(novaProp)] }
           : c
       );
       setCotacoes(updated);
       setIsNewPropostaOpen(false);
-      alert('Proposta elaborada e enviada para o cliente!');
+      showSuccess('A proposta foi elaborada e enviada para o cliente.', 'Proposta enviada!');
     } catch (err) {
-      alert(`Erro ao criar proposta: ${err.message}`);
+      showError(err.message, 'Erro ao criar proposta');
     }
   };
 
@@ -143,14 +140,14 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
       await apiFetch(endpoint, {
         method: 'POST'
       });
-      alert(
-        aceita
-          ? 'Proposta ACEITA! A apólice e suas parcelas foram geradas automaticamente no sistema.'
-          : 'Proposta recusada pelo cliente.'
-      );
+      if (aceita) {
+        showSuccess('A cotação foi aprovada. Registre a contratação na tela de Apólices.', 'Proposta aceita!');
+      } else {
+        showInfo('A proposta foi registrada como recusada pelo cliente.', 'Proposta recusada');
+      }
       loadData();
     } catch (err) {
-      alert(`Erro ao responder proposta: ${err.message}`);
+      showError(err.message, 'Erro ao responder proposta');
     }
   };
 
@@ -162,19 +159,23 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
   };
 
   return (
-    <div className="space-y-6 animate-rise">
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <PageHeader
         eyebrow="Vendas"
-        title="Cotações e propostas"
-        description="Da solicitação ao aceite: crie cotações, elabore propostas e acompanhe a resposta do cliente."
+        title={isCliente ? 'Minhas cotações' : 'Cotações e propostas'}
+        description={
+          isCliente
+            ? 'Solicite cotações, acompanhe as propostas recebidas e responda a cada uma.'
+            : 'Da solicitação ao aceite: crie cotações, elabore propostas e acompanhe a resposta do cliente.'
+        }
         actions={
           <button
             onClick={() => setIsNewCotacaoOpen(true)}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
           >
             <Plus className="size-4" />
-            Nova cotação
+            {isCliente ? 'Solicitar cotação' : 'Nova cotação'}
           </button>
         }
       />
@@ -205,7 +206,7 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
                 key={cotacao.id}
                 title={
                   <div className="flex items-center gap-3">
-                    <span className="font-display font-medium text-base text-foreground">
+                    <span className="font-medium text-base text-foreground">
                       Cotação #{cotacao.id}
                     </span>
                     <StatusBadge status={cotacao.situacao} />
@@ -222,7 +223,7 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
                   {/* Dados da Cotação */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-border/60">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <p className="text-xs font-semibold text-muted-foreground">
                         Cliente
                       </p>
                       <p className="font-medium text-foreground text-sm mt-0.5">
@@ -231,20 +232,22 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
                     </div>
 
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <p className="text-xs font-semibold text-muted-foreground">
                         Tipo de Seguro
                       </p>
                       <p className="font-medium text-foreground text-sm mt-0.5">
                         {cotacao.seguroNome || 'Seguro'}
                       </p>
                     </div>
-
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Informações Fornecidas
+                      <p className="text-xs font-semibold text-muted-foreground">
+                        Valor cotado · Corretor
                       </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {cotacao.informacoesAdicionais || 'Sem observações adicionais.'}
+                      <p className="font-medium text-foreground text-sm mt-0.5">
+                        {formatCurrency(cotacao.valor)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {cotacao.corretorNome || 'Corretor não atribuído'}
                       </p>
                     </div>
                   </div>
@@ -252,13 +255,13 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
                   {/* Área de Proposta */}
                   {hasProposta ? (
                     <div className="space-y-3">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+                      <p className="text-xs font-semibold text-primary">
                         Propostas Vinculadas
                       </p>
                       {cotacao.propostas.map((prop) => (
                         <div
                           key={prop.id}
-                          className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl border border-border bg-accent/20 gap-3"
+                          className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-lg border border-border bg-accent/20 gap-3"
                         >
                           <div>
                             <div className="flex items-center gap-2">
@@ -272,14 +275,14 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
                             </p>
                           </div>
 
-                          {prop.situacao === 'Pendente' && (
+                          {prop.situacao === 'Pendente' && pode(currentRole, 'responderProposta') && (
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={() => handleResponderProposta(prop.id, true)}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-success-soft text-success border border-success/30 hover:bg-success hover:text-white transition-colors"
                               >
                                 <CheckCircle2 className="size-3.5" />
-                                Aceitar (Gera apólice)
+                                Aceitar
                               </button>
                               <button
                                 onClick={() => handleResponderProposta(prop.id, false)}
@@ -298,6 +301,7 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
                       <p className="text-xs text-muted-foreground italic">
                         Nenhuma proposta elaborada ainda para esta solicitação.
                       </p>
+                      {pode(currentRole, 'elaborarProposta') && (
                       <button
                         onClick={() => handleOpenElaborarProposta(cotacao)}
                         className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold bg-primary text-primary-foreground shadow hover:bg-primary/90 transition-colors"
@@ -305,6 +309,7 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
                         <FileCheck className="size-3.5" />
                         Elaborar proposta
                       </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -322,8 +327,9 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
         subtitle="Selecione o cliente solicitante, ramo de cobertura e detalhes do risco."
       >
         <form onSubmit={handleCreateCotacao} className="space-y-4">
+          {!isCliente && (
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
               Cliente *
             </label>
             <select
@@ -338,9 +344,10 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
               ))}
             </select>
           </div>
+          )}
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
               Tipo de Seguro *
             </label>
             <select
@@ -355,21 +362,19 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
               ))}
             </select>
           </div>
-
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
-              Informações para a cotação *
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Valor estimado da cotação (R$)
             </label>
-            <textarea
-              required
-              rows={3}
-              value={cotacaoForm.informacoesAdicionais}
-              onChange={(e) => setCotacaoForm({ ...cotacaoForm, informacoesAdicionais: e.target.value })}
-              placeholder="Ex: Veículo Toyota Corolla 2024, CEP pernoite 70000-000, motorista 35 anos..."
-              className="w-full rounded-md border border-input bg-card p-3 text-sm"
+            <input
+              type="number"
+              step="0.01"
+              value={cotacaoForm.valor}
+              onChange={(e) => setCotacaoForm({ ...cotacaoForm, valor: e.target.value })}
+              placeholder="Se vazio, usa o prêmio base do seguro"
+              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
             />
           </div>
-
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
               type="button"
@@ -397,21 +402,15 @@ export const CotacoesTab = ({ currentUser, currentRole }) => {
       >
         <form onSubmit={handleCreateProposta} className="space-y-4">
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
-              Valor do Prêmio (R$) *
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Valor do Prêmio (valor da cotação)
             </label>
-            <input
-              type="number"
-              step="0.01"
-              required
-              value={propostaForm.premio}
-              onChange={(e) => setPropostaForm({ ...propostaForm, premio: e.target.value })}
-              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-            />
+            <p className="h-10 flex items-center rounded-md border border-input bg-muted/40 px-3 text-sm font-semibold">
+              {formatCurrency(propostaForm.premio)}
+            </p>
           </div>
-
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
               Condições Oferecidas *
             </label>
             <textarea

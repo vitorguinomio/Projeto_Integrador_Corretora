@@ -56,6 +56,12 @@ public class AlertaService {
         return toResponse(salva);
     }
 
+    public NotificacaoResponse buscarPorId(Long id) {
+        return notificacaoAlertaRepository.findById(id)
+                .map(this::toResponse)
+                .orElseThrow(() -> new IllegalArgumentException("Notificação não encontrada com id: " + id));
+    }
+
     @Transactional
     public NotificacaoResponse marcarComoLida(Long id) {
         NotificacaoAlerta alerta = notificacaoAlertaRepository.findById(id)

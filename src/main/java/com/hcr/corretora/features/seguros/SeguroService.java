@@ -28,6 +28,7 @@ public class SeguroService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public SeguroResponse buscarPorId(Long id) {
         Seguro seguro = buscarEntidadePorId(id);
         return toResponse(seguro);
@@ -51,6 +52,7 @@ public class SeguroService {
                 request.caracteristicas(),
                 request.valorBase() != null ? request.valorBase() : BigDecimal.ZERO
         );
+        seguro.setPercentualComissao(request.percentualComissao());
 
         if (request.coberturas() != null) {
             for (CoberturaDto c : request.coberturas()) {
@@ -77,9 +79,13 @@ public class SeguroService {
         if (request.valorBase() != null) {
             seguro.setValorBase(request.valorBase());
         }
+        if (request.percentualComissao() != null) {
+            seguro.setPercentualComissao(request.percentualComissao());
+        }
 
-        seguro.getCoberturas().clear();
+        // Lista ausente no corpo = manter as coberturas atuais (antes, editar o seguro apagava todas)
         if (request.coberturas() != null) {
+            seguro.getCoberturas().clear();
             for (CoberturaDto c : request.coberturas()) {
                 Cobertura cob = new Cobertura(null, c.descricao(), c.valor(), seguro);
                 seguro.addCobertura(cob);
@@ -93,6 +99,16 @@ public class SeguroService {
     public CoberturaDto adicionarCobertura(Long seguroId, CoberturaDto dto) {
         Seguro seguro = buscarEntidadePorId(seguroId);
         Cobertura cobertura = new Cobertura(null, dto.descricao(), dto.valor(), seguro);
+        Cobertura salva = coberturaRepository.save(cobertura);
+        return new CoberturaDto(salva.getId(), salva.getDescricao(), salva.getValor());
+    }
+
+    @Transactional
+    public CoberturaDto atualizarCobertura(Long coberturaId, CoberturaDto dto) {
+        Cobertura cobertura = coberturaRepository.findById(coberturaId)
+                .orElseThrow(() -> new IllegalArgumentException("Cobertura não encontrada com id: " + coberturaId));
+        cobertura.setDescricao(dto.descricao().trim());
+        cobertura.setValor(dto.valor() != null ? dto.valor() : BigDecimal.ZERO);
         Cobertura salva = coberturaRepository.save(cobertura);
         return new CoberturaDto(salva.getId(), salva.getDescricao(), salva.getValor());
     }
@@ -113,6 +129,7 @@ public class SeguroService {
                 seguro.getDescricao(),
                 seguro.getCaracteristicas(),
                 seguro.getValorBase(),
+                seguro.getPercentualComissao(),
                 coberturasDto
         );
     }

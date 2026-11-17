@@ -34,6 +34,12 @@ public class Apolice {
     @Column(name = "valor_premio", precision = 10, scale = 2)
     private BigDecimal valorPremio = BigDecimal.ZERO;
 
+    @Column(name = "motivo_cancelamento", length = 255)
+    private String motivoCancelamento;
+
+    @Column(name = "data_cancelamento")
+    private LocalDate dataCancelamento;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "fk_cliente_id", nullable = false)
     private Cliente cliente;
@@ -107,6 +113,22 @@ public class Apolice {
 
     public void setSituacao(String situacao) {
         this.situacao = situacao;
+    }
+
+    public String getMotivoCancelamento() {
+        return motivoCancelamento;
+    }
+
+    public void setMotivoCancelamento(String motivoCancelamento) {
+        this.motivoCancelamento = motivoCancelamento;
+    }
+
+    public LocalDate getDataCancelamento() {
+        return dataCancelamento;
+    }
+
+    public void setDataCancelamento(LocalDate dataCancelamento) {
+        this.dataCancelamento = dataCancelamento;
     }
 
     public BigDecimal getValorPremio() {

@@ -17,6 +17,12 @@ public class Corretor {
     @Column(name = "dados_profissionais", nullable = false, length = 50)
     private String dadosProfissionais;
 
+    @Column(length = 100)
+    private String especialidade;
+
+    @Column(length = 20)
+    private String telefone;
+
     @Column(nullable = false, length = 20)
     private String status = "ATIVO";
 
@@ -64,6 +70,22 @@ public class Corretor {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getEspecialidade() {
+        return especialidade;
+    }
+
+    public void setEspecialidade(String especialidade) {
+        this.especialidade = especialidade;
+    }
+
+    public String getTelefone() {
+        return telefone;
+    }
+
+    public void setTelefone(String telefone) {
+        this.telefone = telefone;
     }
 
     public Usuario getUsuario() {

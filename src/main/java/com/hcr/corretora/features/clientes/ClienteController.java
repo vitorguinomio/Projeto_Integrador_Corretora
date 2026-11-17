@@ -1,5 +1,7 @@
 package com.hcr.corretora.features.clientes;
 
+import com.hcr.corretora.core.security.UsuarioLogado;
+
 import com.hcr.corretora.features.clientes.dto.ClienteHistoricoResponse;
 import com.hcr.corretora.features.clientes.dto.ClienteRequest;
 import com.hcr.corretora.features.clientes.dto.ClienteResponse;
@@ -15,9 +17,11 @@ import java.util.List;
 public class ClienteController {
 
     private final ClienteService clienteService;
+    private final UsuarioLogado usuarioLogado;
 
-    public ClienteController(ClienteService clienteService) {
+    public ClienteController(ClienteService clienteService, UsuarioLogado usuarioLogado) {
         this.clienteService = clienteService;
+        this.usuarioLogado = usuarioLogado;
     }
 
     @GetMapping
@@ -30,16 +34,22 @@ public class ClienteController {
 
     @GetMapping("/{id}")
     public ResponseEntity<ClienteResponse> buscarPorId(@PathVariable Long id) {
+        usuarioLogado.exigirAcessoAoCliente(id);
         return ResponseEntity.ok(clienteService.buscarPorId(id));
     }
 
     @GetMapping("/{id}/historico")
     public ResponseEntity<ClienteHistoricoResponse> buscarHistorico(@PathVariable Long id) {
+        usuarioLogado.exigirAcessoAoCliente(id);
         return ResponseEntity.ok(clienteService.buscarHistorico(id));
     }
 
     @PostMapping
     public ResponseEntity<ClienteResponse> criar(@Valid @RequestBody ClienteRequest request) {
+        if (request.corretorId() == null && usuarioLogado.possuiPerfil(UsuarioLogado.CORRETOR)) {
+            request = new ClienteRequest(request.nome(), request.cpfCnpj(), request.dataNasc(), request.email(),
+                    request.senhaAcesso(), request.enderecos(), request.telefones(), usuarioLogado.corretorId());
+        }
         ClienteResponse criado = clienteService.criar(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(criado);
     }

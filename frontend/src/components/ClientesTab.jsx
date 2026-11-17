@@ -4,6 +4,7 @@ import {
   Search,
   Plus,
   Eye,
+  Pencil,
   Trash2,
   Phone,
   Mail,
@@ -15,10 +16,11 @@ import {
   Calendar,
   AlertCircle
 } from 'lucide-react';
-import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal, CodeText } from './ui/UiBits';
+import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal, CodeText, useFeedback } from './ui/UiBits';
 import { apiFetch } from '../api';
-
+import { dataLocalISO, mapApolice, mapCliente, mapClienteHistorico, mapCorretor, toTelefoneDto } from '../mappers';
 export const ClientesTab = ({ currentUser, currentRole }) => {
+  const { showSuccess, showError, confirm } = useFeedback();
   const [clientes, setClientes] = useState([]);
   const [corretores, setCorretores] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +30,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
 
   // Modais
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [editingCliente, setEditingCliente] = useState(null); // null = cadastro novo
   const [selectedClienteHistory, setSelectedClienteHistory] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -45,7 +48,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
     cidade: '',
     uf: 'DF',
     cep: '',
-    dataNasc: '1990-01-01',
+    dataNasc: '',
     corretorId: ''
   });
   const [formError, setFormError] = useState(null);
@@ -54,16 +57,17 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
   useEffect(() => {
     loadData();
   }, []);
-
   const loadData = async () => {
     try {
       setLoading(true);
-      const [clientesData, corretoresData] = await Promise.all([
+      const [clientesData, corretoresData, apolicesData] = await Promise.all([
         apiFetch('/clientes').catch(() => []),
-        apiFetch('/corretores').catch(() => [])
+        apiFetch('/corretores').catch(() => []),
+        apiFetch('/apolices').catch(() => [])
       ]);
-      setClientes(clientesData || []);
-      setCorretores(corretoresData || []);
+      const apolices = (apolicesData || []).map(mapApolice);
+      setClientes((clientesData || []).map((c) => mapCliente(c, apolices)));
+      setCorretores((corretoresData || []).map((c) => mapCorretor(c, apolices)));
       if (corretoresData && corretoresData.length > 0) {
         setForm((prev) => ({ ...prev, corretorId: corretoresData[0].id }));
       }
@@ -73,14 +77,13 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
       setLoading(false);
     }
   };
-
   const handleOpenHistory = async (cliente) => {
     try {
       setHistoryLoading(true);
       setSelectedClienteHistory(cliente);
       const fullHistory = await apiFetch(`/clientes/${cliente.id}/historico`).catch(() => null);
       if (fullHistory) {
-        setSelectedClienteHistory(fullHistory);
+        setSelectedClienteHistory(mapClienteHistorico(fullHistory));
       }
     } catch (err) {
       console.error('Erro ao buscar histórico:', err);
@@ -90,59 +93,126 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
   };
 
   const handleDelete = async (id, nome) => {
-    if (!window.confirm(`Deseja realmente excluir o cliente "${nome}"? Esta ação removerá registros vinculados se permitido.`)) {
+    const confirmado = await confirm({
+      title: 'Excluir cliente?',
+      message: `Deseja realmente excluir o cliente "${nome}"? Os registros vinculados também serão removidos, se permitido.`,
+      confirmLabel: 'Excluir',
+      danger: true
+    });
+    if (!confirmado) {
       return;
     }
     try {
       await apiFetch(`/clientes/${id}`, { method: 'DELETE' });
       setClientes(clientes.filter((c) => c.id !== id));
-      alert('Cliente excluído com sucesso.');
+      showSuccess(`${nome} foi excluído com sucesso.`, 'Cliente excluído');
     } catch (err) {
-      alert(`Não foi possível excluir o cliente: ${err.message}`);
+      showError(err.message, 'Não foi possível excluir o cliente');
     }
+  };
+
+  const FORM_VAZIO = {
+    nome: '',
+    cpfCnpj: '',
+    tipo: 'PF',
+    email: '',
+    telefone: '',
+    tipoTelefone: 'CELULAR',
+    logradouro: '',
+    numero: '',
+    bairro: '',
+    cidade: '',
+    uf: 'DF',
+    cep: '',
+    dataNasc: '',
+    corretorId: ''
+  };
+
+  const abrirCadastro = () => {
+    setEditingCliente(null);
+    setFormError(null);
+    // Corretor que cadastra fica como responsável por padrão
+    setForm({ ...FORM_VAZIO, corretorId: currentUser?.corretorId ?? '' });
+    setIsNewModalOpen(true);
+  };
+
+  const abrirEdicao = (cliente) => {
+    const tel = cliente.telefones?.[0];
+    const end = cliente.enderecos?.[0];
+    setEditingCliente(cliente);
+    setFormError(null);
+    setForm({
+      ...FORM_VAZIO,
+      nome: cliente.nome || '',
+      cpfCnpj: cliente.cpfCnpj || '',
+      tipo: cliente.tipo || 'PF',
+      email: cliente.email || '',
+      dataNasc: cliente.dataNasc || '',
+      telefone: tel?.numero || '',
+      tipoTelefone: tel?.tipo || 'CELULAR',
+      logradouro: end?.logradouro || '',
+      numero: end?.numero || '',
+      bairro: end?.bairro || '',
+      cidade: end?.cidade || '',
+      uf: end?.estado || 'DF',
+      cep: end?.cep || '',
+      corretorId: cliente.corretorId ?? ''
+    });
+    setIsNewModalOpen(true);
   };
 
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
     setFormError(null);
 
-    if (!form.nome || !form.cpfCnpj || !form.email) {
+    if (!form.nome || !form.cpfCnpj || !form.email || !form.dataNasc) {
       setFormError('Por favor preencha nome, CPF/CNPJ e e-mail.');
       return;
     }
-
     try {
       setSubmitting(true);
+      if (form.logradouro && (!form.bairro || !form.cidade)) {
+        setFormError('Para cadastrar o endereço, informe também bairro e cidade.');
+        return;
+      }
+      const telefone = toTelefoneDto(form.telefone, form.tipoTelefone);
+      if (form.telefone && !telefone) {
+        setFormError('Informe o telefone com DDD. Ex: (61) 99888-7766');
+        return;
+      }
+      // Formato de ClienteRequest (backend)
       const payload = {
         nome: form.nome,
-        cpfCnpj: form.cpfCnpj.replace(/\D/g, ''),
-        tipo: form.tipo,
+        cpfCnpj: form.cpfCnpj.trim(),
         email: form.email,
-        dataNasc: form.dataNasc || '1990-01-01',
+        dataNasc: form.dataNasc || null,
+        telefones: telefone ? [telefone] : [],
         corretorId: form.corretorId ? Number(form.corretorId) : null,
-        telefones: form.telefone
-          ? [{ numero: form.telefone, tipo: form.tipoTelefone }]
-          : [],
         enderecos: form.logradouro
           ? [
               {
                 logradouro: form.logradouro,
-                numero: form.numero,
+                numero: form.numero || 'S/N',
+                complemento: editingCliente?.enderecos?.[0]?.complemento ?? null,
                 bairro: form.bairro,
                 cidade: form.cidade || 'Brasília',
-                estado: form.uf || 'DF',
+                estado: (form.uf || 'DF').toUpperCase(),
                 cep: form.cep || '70000-000'
               }
             ]
           : []
       };
-
-      const novo = await apiFetch('/clientes', {
-        method: 'POST',
+      const salvo = await apiFetch(editingCliente ? `/clientes/${editingCliente.id}` : '/clientes', {
+        method: editingCliente ? 'PUT' : 'POST',
         body: JSON.stringify(payload)
       });
-
-      setClientes([novo, ...clientes]);
+      if (editingCliente) {
+        setClientes(
+          clientes.map((c) => (c.id === salvo.id ? { ...mapCliente(salvo), totalApolices: c.totalApolices } : c))
+        );
+      } else {
+        setClientes([mapCliente(salvo), ...clientes]);
+      }
       setIsNewModalOpen(false);
       setForm({
         nome: '',
@@ -157,11 +227,15 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
         cidade: '',
         uf: 'DF',
         cep: '',
-        corretorId: corretores[0]?.id || ''
+        dataNasc: ''
       });
-      alert('Cliente cadastrado com sucesso!');
+      showSuccess(
+        editingCliente ? 'Os dados do cliente foram atualizados.' : 'O cliente foi cadastrado com sucesso.',
+        editingCliente ? 'Cliente atualizado!' : 'Cliente cadastrado!'
+      );
+      setEditingCliente(null);
     } catch (err) {
-      setFormError(err.message || 'Erro ao cadastrar cliente.');
+      setFormError(err.message || 'Erro ao salvar cliente.');
     } finally {
       setSubmitting(false);
     }
@@ -208,7 +282,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
   };
 
   return (
-    <div className="space-y-6 animate-rise">
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <PageHeader
         eyebrow="Cadastros"
@@ -216,7 +290,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
         description="Pesquise por nome, CPF/CNPJ, e-mail ou código. Clique em um cliente para ver o histórico completo."
         actions={
           <button
-            onClick={() => setIsNewModalOpen(true)}
+            onClick={abrirCadastro}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
           >
             <Plus className="size-4" />
@@ -270,7 +344,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
             text="Tente ajustar a busca ou os filtros aplicados."
             action={
               <button
-                onClick={() => setIsNewModalOpen(true)}
+                onClick={abrirCadastro}
                 className="inline-flex items-center gap-2 text-sm text-primary font-semibold hover:underline"
               >
                 <Plus className="size-4" />
@@ -282,7 +356,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm">
               <thead>
-                <tr className="border-b border-border bg-muted/40 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <tr className="border-b border-border bg-muted/60 text-xs font-medium text-muted-foreground">
                   <th className="px-5 py-3.5">Cliente</th>
                   <th className="px-5 py-3.5">CPF / CNPJ</th>
                   <th className="px-5 py-3.5">Contato</th>
@@ -357,6 +431,14 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
                             <Eye className="size-4" />
                           </button>
                           <button
+                            onClick={() => abrirEdicao(cliente)}
+                            title="Editar cliente"
+                            aria-label={`Editar cliente ${cliente.nome}`}
+                            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <Pencil className="size-4" />
+                          </button>
+                          <button
                             onClick={() => handleDelete(cliente.id, cliente.nome)}
                             title="Excluir cliente"
                             className="p-1.5 rounded-md hover:bg-danger-soft text-muted-foreground hover:text-danger transition-colors"
@@ -378,8 +460,12 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
       <Modal
         isOpen={isNewModalOpen}
         onClose={() => setIsNewModalOpen(false)}
-        title="Cadastrar cliente"
-        subtitle="Preencha os dados cadastrais, endereço e contato do novo cliente."
+        title={editingCliente ? 'Editar cliente' : 'Cadastrar cliente'}
+        subtitle={
+          editingCliente
+            ? `Altere os dados cadastrais, endereço e contato de ${editingCliente.nome}.`
+            : 'Preencha os dados cadastrais, endereço e contato do novo cliente.'
+        }
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleCreateSubmit} className="space-y-4">
@@ -392,7 +478,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 Tipo de Pessoa *
               </label>
               <select
@@ -406,7 +492,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
             </div>
 
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 CPF / CNPJ *
               </label>
               <input
@@ -420,23 +506,39 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
-              Nome Completo / Razão Social *
-            </label>
-            <input
-              type="text"
-              required
-              value={form.nome}
-              onChange={(e) => setForm({ ...form, nome: e.target.value })}
-              placeholder="Ex: Carlos Eduardo de Souza"
-              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_200px] gap-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
+                Nome Completo / Razão Social *
+              </label>
+              <input
+                type="text"
+                required
+                value={form.nome}
+                onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                placeholder="Ex: Carlos Eduardo de Souza"
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
+                {form.tipo === 'PJ' ? 'Data de fundação *' : 'Data de nascimento *'}
+              </label>
+              <input
+                type="date"
+                required
+                max={dataLocalISO()}
+                value={form.dataNasc}
+                onChange={(e) => setForm({ ...form, dataNasc: e.target.value })}
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 E-mail *
               </label>
               <input
@@ -450,7 +552,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
             </div>
 
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 Telefone
               </label>
               <input
@@ -463,8 +565,26 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
             </div>
           </div>
 
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Corretor responsável
+            </label>
+            <select
+              value={form.corretorId}
+              onChange={(e) => setForm({ ...form, corretorId: e.target.value })}
+              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+            >
+              <option value="">Sem corretor definido</option>
+              {corretores.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome} ({c.dadosProfissionais})
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="border-t border-border pt-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-3">
+            <p className="text-xs font-semibold text-primary mb-3">
               Endereço Principal
             </p>
             <div className="grid grid-cols-3 gap-3">
@@ -517,24 +637,6 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
               </div>
             </div>
           </div>
-
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
-              Corretor Responsável
-            </label>
-            <select
-              value={form.corretorId}
-              onChange={(e) => setForm({ ...form, corretorId: e.target.value })}
-              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              {corretores.map((corretor) => (
-                <option key={corretor.id} value={corretor.id}>
-                  {corretor.nome} (SUSEP {corretor.registroSusep})
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
               type="button"
@@ -548,7 +650,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
               disabled={submitting}
               className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90 disabled:opacity-50"
             >
-              {submitting ? 'Cadastrando...' : 'Salvar cliente'}
+              {submitting ? 'Salvando...' : editingCliente ? 'Salvar alterações' : 'Salvar cliente'}
             </button>
           </div>
         </form>
@@ -569,9 +671,9 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
         ) : (
           <div className="space-y-6">
             {/* Informações de Contato e Endereço */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-muted/40 p-4 rounded-xl border border-border">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-muted/40 p-4 rounded-lg border border-border">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">
                   Dados de Contato
                 </p>
                 <div className="space-y-1.5 text-xs">
@@ -589,7 +691,7 @@ export const ClientesTab = ({ currentUser, currentRole }) => {
               </div>
 
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">
                   Endereço Cadastrado
                 </p>
                 {selectedClienteHistory?.enderecos && selectedClienteHistory.enderecos.length > 0 ? (

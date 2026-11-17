@@ -24,5 +24,7 @@ public record ClienteRequest(
 
         List<EnderecoDto> enderecos,
 
-        List<TelefoneDto> telefones
+        List<TelefoneDto> telefones,
+
+        Long corretorId
 ) {}

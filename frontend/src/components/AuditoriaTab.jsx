@@ -45,7 +45,7 @@ export default function AuditoriaTab({ currentUser, currentRole }) {
       case 'ATUALIZAR':
       case 'RENOVAR':
       case 'PAGAR':
-        return 'bg-signal-soft text-signal-foreground border border-signal/30';
+        return 'bg-warning-soft text-warning border border-warning/30';
       case 'DELETE':
       case 'EXCLUIR':
       case 'CANCELAR':
@@ -72,7 +72,7 @@ export default function AuditoriaTab({ currentUser, currentRole }) {
   });
 
   return (
-    <div className="space-y-6 animate-rise">
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <PageHeader
         eyebrow="Segurança"
@@ -120,7 +120,7 @@ export default function AuditoriaTab({ currentUser, currentRole }) {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm">
               <thead>
-                <tr className="border-b border-border bg-muted/40 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <tr className="border-b border-border bg-muted/60 text-xs font-medium text-muted-foreground">
                   <th className="px-5 py-3.5">Data e hora</th>
                   <th className="px-5 py-3.5">Ação</th>
                   <th className="px-5 py-3.5">Tabela</th>

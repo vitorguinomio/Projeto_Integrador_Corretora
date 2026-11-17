@@ -1,5 +1,6 @@
 package com.hcr.corretora.features.usuarios;
 
+import com.hcr.corretora.core.security.UsuarioLogado;
 import com.hcr.corretora.features.usuarios.dto.UsuarioCreateRequest;
 import com.hcr.corretora.features.usuarios.dto.UsuarioResponse;
 import jakarta.validation.Valid;
@@ -15,9 +16,18 @@ import java.util.Map;
 public class UsuarioController {
 
     private final UsuarioService usuarioService;
+    private final UsuarioLogado usuarioLogado;
 
-    public UsuarioController(UsuarioService usuarioService) {
+    public UsuarioController(UsuarioService usuarioService, UsuarioLogado usuarioLogado) {
         this.usuarioService = usuarioService;
+        this.usuarioLogado = usuarioLogado;
+    }
+
+    /** Evita que o administrador remova o próprio acesso por engano. */
+    private void impedirAlteracaoDoProprioUsuario(Long id) {
+        if (usuarioLogado.usuario().getId().equals(id)) {
+            throw new IllegalArgumentException("Você não pode alterar o próprio perfil ou status. Peça a outro administrador.");
+        }
     }
 
     @GetMapping
@@ -38,12 +48,14 @@ public class UsuarioController {
 
     @PatchMapping("/{id}/status")
     public ResponseEntity<UsuarioResponse> alterarStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        impedirAlteracaoDoProprioUsuario(id);
         String status = body.getOrDefault("status", "ATIVO");
         return ResponseEntity.ok(usuarioService.alterarStatus(id, status));
     }
 
     @PatchMapping("/{id}/perfil")
     public ResponseEntity<UsuarioResponse> alterarPerfil(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        impedirAlteracaoDoProprioUsuario(id);
         String perfil = body.getOrDefault("perfil", "CLIENTE");
         return ResponseEntity.ok(usuarioService.alterarPerfil(id, perfil));
     }

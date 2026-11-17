@@ -18,5 +18,7 @@ public record ApoliceResponse(
         Long seguroId,
         String seguroNome,
         Long idApoliceAnterior,
+        String motivoCancelamento,
+        LocalDate dataCancelamento,
         List<ParcelaResponse> parcelas
 ) {}

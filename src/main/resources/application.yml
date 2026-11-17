@@ -19,3 +19,10 @@ spring:
       hibernate:
         format_sql: true
     open-in-view: false
+
+app:
+  jwt:
+    # Chave de assinatura dos tokens: definida pela variável de ambiente JWT_SECRET (veja .env.example).
+    # Sem ela, a aplicação gera uma chave temporária a cada inicialização.
+    secret: ${JWT_SECRET:}
+    expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}

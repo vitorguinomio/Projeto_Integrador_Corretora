@@ -1,8 +1,11 @@
 package com.hcr.corretora.features.clientes;
 
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.hcr.corretora.features.corretores.Corretor;
 import com.hcr.corretora.features.usuarios.Usuario;
 import jakarta.persistence.*;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -31,6 +34,12 @@ public class Cliente {
     @OneToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "fk_usuario_id", unique = true)
     private Usuario usuario;
+
+    /** Corretor responsável pelo atendimento do cliente. Se o corretor for excluído, o vínculo é desfeito. */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "fk_corretor_id", foreignKey = @ForeignKey(name = "fk_cliente_corretor"))
+    @OnDelete(action = OnDeleteAction.SET_NULL)
+    private Corretor corretor;
 
     @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonManagedReference
@@ -97,6 +106,14 @@ public class Cliente {
 
     public void setUsuario(Usuario usuario) {
         this.usuario = usuario;
+    }
+
+    public Corretor getCorretor() {
+        return corretor;
+    }
+
+    public void setCorretor(Corretor corretor) {
+        this.corretor = corretor;
     }
 
     public List<Endereco> getEnderecos() {

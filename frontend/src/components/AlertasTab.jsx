@@ -11,7 +11,8 @@ import {
 } from 'lucide-react';
 import { PageHeader, StatusBadge, SectionCard, EmptyState } from './ui/UiBits';
 import { apiFetch } from '../api';
-
+import { pode } from '../permissoes';
+import { mapAlerta, mapApolice } from '../mappers';
 export const AlertasTab = ({ setActiveTab, currentUser, currentRole }) => {
   const [alertas, setAlertas] = useState([]);
   const [apolices, setApolices] = useState([]);
@@ -28,19 +29,19 @@ export const AlertasTab = ({ setActiveTab, currentUser, currentRole }) => {
         apiFetch('/alertas').catch(() => []),
         apiFetch('/apolices').catch(() => [])
       ]);
-      setAlertas(alertasData || []);
-      setApolices(apolicesData || []);
+      setAlertas((alertasData || []).map(mapAlerta));
+      // Somente apólices vigentes entram na janela de vencimento
+      setApolices((apolicesData || []).map(mapApolice).filter((a) => a.situacaoCodigo === 'ATIVA'));
     } catch (err) {
       console.error('Erro ao carregar alertas:', err);
     } finally {
       setLoading(false);
     }
   };
-
   const handleMarcarLido = async (id) => {
     try {
-      await apiFetch(`/alertas/${id}/lido`, { method: 'PUT' });
-      setAlertas(alertas.map((a) => (a.id === id ? { ...a, lido: true } : a)));
+      const atualizado = await apiFetch(`/alertas/${id}/ler`, { method: 'PATCH' });
+      setAlertas(alertas.map((a) => (a.id === id ? mapAlerta(atualizado) : a)));
     } catch (err) {
       console.error('Erro ao marcar lido:', err);
     }
@@ -64,7 +65,7 @@ export const AlertasTab = ({ setActiveTab, currentUser, currentRole }) => {
   };
 
   return (
-    <div className="space-y-6 animate-rise">
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <PageHeader
         eyebrow="Acompanhamento"
@@ -120,12 +121,14 @@ export const AlertasTab = ({ setActiveTab, currentUser, currentRole }) => {
                       <Clock className="size-3" />
                       vence em {days} dias
                     </span>
+                    {pode(currentRole, 'gerenciarApolices') && (
                     <button
                       onClick={() => setActiveTab('apolices')}
                       className="px-3 py-1.5 rounded-md text-xs font-semibold bg-primary text-primary-foreground shadow hover:bg-primary/90 transition-colors"
                     >
                       Renovar apólice
                     </button>
+                    )}
                   </div>
                 </div>
               );
@@ -170,7 +173,7 @@ export const AlertasTab = ({ setActiveTab, currentUser, currentRole }) => {
                         {alerta.titulo}
                       </h4>
                       {!alerta.lido && (
-                        <span className="size-2 rounded-full bg-signal" title="Não lido" />
+                        <span className="size-2 rounded-full bg-warning" title="Não lido" />
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">

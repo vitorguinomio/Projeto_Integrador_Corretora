@@ -1,5 +1,7 @@
 package com.hcr.corretora.features.apolices;
 
+import com.hcr.corretora.core.security.UsuarioLogado;
+
 import com.hcr.corretora.features.apolices.dto.*;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -13,9 +15,11 @@ import java.util.List;
 public class ApoliceController {
 
     private final ApoliceService apoliceService;
+    private final UsuarioLogado usuarioLogado;
 
-    public ApoliceController(ApoliceService apoliceService) {
+    public ApoliceController(ApoliceService apoliceService, UsuarioLogado usuarioLogado) {
         this.apoliceService = apoliceService;
+        this.usuarioLogado = usuarioLogado;
     }
 
     @GetMapping
@@ -25,12 +29,16 @@ public class ApoliceController {
             @RequestParam(required = false) Long clienteId,
             @RequestParam(required = false) Long corretorId
     ) {
-        return ResponseEntity.ok(apoliceService.pesquisar(termo, situacao, clienteId, corretorId));
+        // Cliente enxerga apenas as próprias apólices
+        Long filtroCliente = usuarioLogado.restringirClienteId(clienteId);
+        return ResponseEntity.ok(apoliceService.pesquisar(termo, situacao, filtroCliente, corretorId));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ApoliceResponse> buscarPorId(@PathVariable Long id) {
-        return ResponseEntity.ok(apoliceService.buscarPorId(id));
+        ApoliceResponse apolice = apoliceService.buscarPorId(id);
+        usuarioLogado.exigirAcessoAoCliente(apolice.clienteId());
+        return ResponseEntity.ok(apolice);
     }
 
     @PostMapping
@@ -39,14 +47,22 @@ public class ApoliceController {
         return ResponseEntity.status(HttpStatus.CREATED).body(criada);
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<ApoliceResponse> atualizar(@PathVariable Long id, @Valid @RequestBody AtualizacaoApoliceRequest request) {
+        return ResponseEntity.ok(apoliceService.atualizar(id, request));
+    }
+
     @PostMapping("/{id}/renovar")
     public ResponseEntity<ApoliceResponse> renovar(@PathVariable Long id, @Valid @RequestBody RenovacaoRequest request) {
         return ResponseEntity.ok(apoliceService.renovar(id, request));
     }
 
     @PostMapping("/{id}/cancelar")
-    public ResponseEntity<ApoliceResponse> cancelar(@PathVariable Long id) {
-        return ResponseEntity.ok(apoliceService.cancelar(id));
+    public ResponseEntity<ApoliceResponse> cancelar(
+            @PathVariable Long id,
+            @Valid @RequestBody(required = false) CancelamentoRequest request
+    ) {
+        return ResponseEntity.ok(apoliceService.cancelar(id, request != null ? request.motivo() : null));
     }
 
     @GetMapping("/alertas-vencimento")
@@ -56,6 +72,7 @@ public class ApoliceController {
 
     @GetMapping("/{id}/parcelas")
     public ResponseEntity<List<ParcelaResponse>> listarParcelas(@PathVariable Long id) {
+        usuarioLogado.exigirAcessoAoCliente(apoliceService.buscarPorId(id).clienteId());
         return ResponseEntity.ok(apoliceService.listarParcelasPorApolice(id));
     }
 

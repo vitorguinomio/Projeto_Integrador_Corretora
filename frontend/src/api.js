@@ -34,6 +34,12 @@ export const apiFetch = async (endpoint, options = {}) => {
     return null;
   }
 
+  // Sessão expirada, token inválido ou usuário desativado: encerra a sessão no app
+  if (response.status === 401 && currentToken && !url.includes('/auth/login')) {
+    setAuthToken(null);
+    window.dispatchEvent(new Event('hcr:sessao-expirada'));
+  }
+
   const contentType = response.headers.get('content-type');
   const isJson = contentType && contentType.includes('application/json');
   const data = isJson ? await response.json() : await response.text();

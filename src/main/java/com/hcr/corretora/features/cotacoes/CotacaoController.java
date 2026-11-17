@@ -1,5 +1,7 @@
 package com.hcr.corretora.features.cotacoes;
 
+import com.hcr.corretora.core.security.UsuarioLogado;
+
 import com.hcr.corretora.features.cotacoes.dto.CotacaoRequest;
 import com.hcr.corretora.features.cotacoes.dto.CotacaoResponse;
 import jakarta.validation.Valid;
@@ -15,9 +17,11 @@ import java.util.Map;
 public class CotacaoController {
 
     private final CotacaoService cotacaoService;
+    private final UsuarioLogado usuarioLogado;
 
-    public CotacaoController(CotacaoService cotacaoService) {
+    public CotacaoController(CotacaoService cotacaoService, UsuarioLogado usuarioLogado) {
         this.cotacaoService = cotacaoService;
+        this.usuarioLogado = usuarioLogado;
     }
 
     @GetMapping
@@ -26,16 +30,22 @@ public class CotacaoController {
             @RequestParam(required = false) Long corretorId,
             @RequestParam(required = false) String situacao
     ) {
-        return ResponseEntity.ok(cotacaoService.listar(clienteId, corretorId, situacao));
+        return ResponseEntity.ok(cotacaoService.listar(usuarioLogado.restringirClienteId(clienteId), corretorId, situacao));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<CotacaoResponse> buscarPorId(@PathVariable Long id) {
-        return ResponseEntity.ok(cotacaoService.buscarPorId(id));
+        CotacaoResponse cotacao = cotacaoService.buscarPorId(id);
+        usuarioLogado.exigirAcessoAoCliente(cotacao.clienteId());
+        return ResponseEntity.ok(cotacao);
     }
 
     @PostMapping
     public ResponseEntity<CotacaoResponse> criar(@Valid @RequestBody CotacaoRequest request) {
+        if (usuarioLogado.isCliente()) {
+            // O cliente só solicita cotação para si mesmo e não escolhe corretor nem situação
+            request = new CotacaoRequest(usuarioLogado.clienteId(), null, request.seguroId(), request.valor(), "SOLICITADA");
+        }
         CotacaoResponse criado = cotacaoService.criar(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(criado);
     }

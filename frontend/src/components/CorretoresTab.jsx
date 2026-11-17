@@ -8,24 +8,43 @@ import {
   Users,
   Award,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Pencil,
+  Power,
+  Search,
+  Trash2
 } from 'lucide-react';
-import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal } from './ui/UiBits';
+import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal, useFeedback } from './ui/UiBits';
 import { apiFetch } from '../api';
+import { codigoSituacao, mapApolice, mapCorretor } from '../mappers';
 
-export const CorretoresTab = ({ currentUser, currentRole }) => {
+const TELEFONE_REGEX = /^\(\d{2}\) \d{5}-\d{4}$/;
+
+// Mantém só dígitos (máx. 11) e aplica a máscara (xx) xxxxx-xxxx conforme o usuário digita
+const formatTelefone = (value = '') => {
+  const d = value.replace(/\D/g, '').slice(0, 11);
+  if (d.length === 0) return '';
+  if (d.length <= 2) return `(${d}`;
+  if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+};
+
+export const CorretoresTab =({ currentUser, currentRole }) => {
   const [corretores, setCorretores] = useState([]);
+  const [busca, setBusca] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Modal
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [editingCorretor, setEditingCorretor] = useState(null); // null = cadastro novo
+  const { showSuccess, showError, showWarning, confirm } = useFeedback();
   const [form, setForm] = useState({
     nome: '',
     registroSusep: '',
     especialidade: 'Geral',
     email: '',
     telefone: '',
-    status: 'Ativo'
+    status: 'ATIVO'
   });
 
   useEffect(() => {
@@ -35,8 +54,13 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
   const loadCorretores = async () => {
     try {
       setLoading(true);
-      const data = await apiFetch('/corretores').catch(() => []);
-      setCorretores(data || []);
+      // Os contadores (clientes atendidos / apólices ativas) vêm das apólices de cada corretor
+      const [data, apolicesData] = await Promise.all([
+        apiFetch('/corretores').catch(() => []),
+        apiFetch('/apolices').catch(() => [])
+      ]);
+      const apolices = (apolicesData || []).map(mapApolice);
+      setCorretores((data || []).map((c) => mapCorretor(c, apolices)));
     } catch (err) {
       console.error('Erro ao carregar corretores:', err);
     } finally {
@@ -44,42 +68,141 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
     }
   };
 
+  const FORM_VAZIO = {
+    nome: '',
+    registroSusep: '',
+    especialidade: 'Geral',
+    email: '',
+    telefone: '',
+    status: 'ATIVO'
+  };
+
+  const abrirCadastro = () => {
+    setEditingCorretor(null);
+    setForm(FORM_VAZIO);
+    setIsNewModalOpen(true);
+  };
+
+  const abrirEdicao = (corretor) => {
+    setEditingCorretor(corretor);
+    setForm({
+      nome: corretor.nome || '',
+      registroSusep: corretor.dadosProfissionais || '',
+      especialidade: corretor.especialidade || 'Geral',
+      email: corretor.email || '',
+      telefone: corretor.telefone || '',
+      status: codigoSituacao(corretor.status) || 'ATIVO'
+    });
+    setIsNewModalOpen(true);
+  };
+
+  // Mantém os contadores (calculados a partir das apólices) ao trocar o registro na lista
+  const substituirNaLista = (atualizado) =>
+    setCorretores((lista) =>
+      lista.map((c) =>
+        c.id === atualizado.id
+          ? { ...mapCorretor(atualizado), totalClientes: c.totalClientes, totalApolices: c.totalApolices }
+          : c
+      )
+    );
+
+  const handleToggleStatus = async (corretor) => {
+    const ativo = codigoSituacao(corretor.status) === 'ATIVO';
+    if (ativo) {
+      const confirmado = await confirm({
+        title: 'Desativar corretor?',
+        message: `${corretor.nome} deixará de acessar o sistema até ser reativado. As apólices e clientes dele não são alterados.`,
+        confirmLabel: 'Desativar'
+      });
+      if (!confirmado) return;
+    }
+    try {
+      const atualizado = await apiFetch(`/corretores/${corretor.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: ativo ? 'INATIVO' : 'ATIVO' })
+      });
+      substituirNaLista(atualizado);
+      showSuccess(
+        ativo ? `${corretor.nome} foi desativado e não consegue mais entrar no sistema.` : `${corretor.nome} foi reativado.`,
+        ativo ? 'Corretor desativado' : 'Corretor reativado'
+      );
+    } catch (err) {
+      showError(err.message, 'Erro ao alterar status');
+    }
+  };
+
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
     if (!form.nome || !form.registroSusep || !form.email) {
-      alert('Preencha os campos obrigatórios (*).');
+      showWarning('Preencha os campos obrigatórios (*).', 'Campos obrigatórios');
+      return;
+    }
+    if (form.telefone && !TELEFONE_REGEX.test(form.telefone)) {
+      showWarning('Informe o telefone completo com DDD no formato (xx) xxxxx-xxxx.', 'Telefone incompleto');
       return;
     }
     try {
       const payload = {
         nome: form.nome,
-        registroSusep: form.registroSusep,
+        // O backend (CorretorRequest) espera o registro SUSEP no campo "dadosProfissionais"
+        dadosProfissionais: form.registroSusep,
         especialidade: form.especialidade,
         email: form.email,
         telefone: form.telefone,
         status: form.status
       };
 
-      const novo = await apiFetch('/corretores', {
-        method: 'POST',
+      const salvo = await apiFetch(editingCorretor ? `/corretores/${editingCorretor.id}` : '/corretores', {
+        method: editingCorretor ? 'PUT' : 'POST',
         body: JSON.stringify(payload)
       });
 
-      setCorretores([...corretores, novo]);
+      if (editingCorretor) {
+        substituirNaLista(salvo);
+      } else {
+        setCorretores([...corretores, mapCorretor(salvo)]);
+      }
       setIsNewModalOpen(false);
-      setForm({
-        nome: '',
-        registroSusep: '',
-        especialidade: 'Geral',
-        email: '',
-        telefone: '',
-        status: 'Ativo'
-      });
-      alert('Corretor cadastrado com sucesso!');
+      setForm(FORM_VAZIO);
+      showSuccess(
+        editingCorretor
+          ? `Os dados de ${salvo?.nome || 'o corretor'} foram atualizados.`
+          : `${salvo?.nome || 'O corretor'} foi cadastrado com sucesso.`,
+        editingCorretor ? 'Corretor atualizado!' : 'Corretor cadastrado!'
+      );
+      setEditingCorretor(null);
     } catch (err) {
-      alert(`Erro ao cadastrar corretor: ${err.message}`);
+      showError(err.message, editingCorretor ? 'Erro ao atualizar corretor' : 'Erro ao cadastrar corretor');
     }
   };
+
+  const handleDelete = async (corretor) => {
+    const confirmado = await confirm({
+      title: 'Excluir corretor?',
+      message: `Excluir o corretor ${corretor.nome}? O acesso dele ao sistema também será removido.`,
+      confirmLabel: 'Excluir',
+      danger: true
+    });
+    if (!confirmado) {
+      return;
+    }
+    try {
+      await apiFetch(`/corretores/${corretor.id}`, { method: 'DELETE' });
+      setCorretores(corretores.filter((c) => c.id !== corretor.id));
+      showSuccess(`${corretor.nome} foi removido da equipe.`, 'Corretor excluído');
+    } catch (err) {
+      showError(err.message, 'Erro ao excluir corretor');
+    }
+  };
+
+  const termo = busca.trim().toLowerCase();
+  const corretoresFiltrados = !termo
+    ? corretores
+    : corretores.filter((c) =>
+        [c.nome, c.dadosProfissionais, c.email, c.especialidade, c.telefone]
+          .filter(Boolean)
+          .some((texto) => texto.toLowerCase().includes(termo))
+      );
 
   const getInitials = (nome = '') => {
     return nome
@@ -91,7 +214,7 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
   };
 
   return (
-    <div className="space-y-6 animate-rise">
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <PageHeader
         eyebrow="Equipe"
@@ -99,7 +222,7 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
         description="Profissionais vinculados à HCR, seus clientes atendidos e apólices sob responsabilidade."
         actions={
           <button
-            onClick={() => setIsNewModalOpen(true)}
+            onClick={abrirCadastro}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
           >
             <Plus className="size-4" />
@@ -108,16 +231,35 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
         }
       />
 
+      {/* Busca (RF25) */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          type="search"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Pesquise por nome, SUSEP, e-mail, especialidade ou telefone…"
+          aria-label="Pesquisar corretores"
+          className="h-10 w-full rounded-md border border-input bg-card pl-9 pr-3 text-sm"
+        />
+      </div>
+
+      {corretoresFiltrados.length === 0 && !loading && (
+        <SectionCard>
+          <EmptyState title="Nenhum corretor encontrado" text="Tente outro termo de busca." />
+        </SectionCard>
+      )}
+
       {/* Grid de Cards de Corretores */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {corretores.map((c) => (
+        {corretoresFiltrados.map((c) => (
           <div
             key={c.id}
-            className="rounded-xl border border-border bg-card p-5 shadow-card space-y-4 hover:border-primary/40 transition-colors"
+            className="rounded-lg border border-border bg-card p-5 shadow-xs space-y-4 hover:border-primary/40 transition-colors"
           >
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <span className="inline-flex size-11 items-center justify-center rounded-full bg-accent text-accent-foreground font-display font-bold text-sm shrink-0">
+                <span className="inline-flex size-11 items-center justify-center rounded-full bg-accent text-accent-foreground font-bold text-sm shrink-0">
                   {getInitials(c.nome)}
                 </span>
                 <div>
@@ -125,11 +267,40 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
                     {c.nome}
                   </h3>
                   <span className="text-[0.7rem] text-muted-foreground font-mono">
-                    SUSEP {c.registroSusep}
+                    {c.dadosProfissionais}
                   </span>
                 </div>
               </div>
-              <StatusBadge status={c.status || 'Ativo'} />
+              <div className="flex items-center gap-2">
+                <StatusBadge status={c.status || 'ATIVO'} />
+                <button
+                  type="button"
+                  onClick={() => abrirEdicao(c)}
+                  title="Editar corretor"
+                  aria-label={`Editar corretor ${c.nome}`}
+                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  <Pencil className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleStatus(c)}
+                  title={codigoSituacao(c.status) === 'ATIVO' ? 'Desativar corretor' : 'Reativar corretor'}
+                  aria-label={`${codigoSituacao(c.status) === 'ATIVO' ? 'Desativar' : 'Reativar'} corretor ${c.nome}`}
+                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  <Power className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(c)}
+                  title="Excluir corretor"
+                  aria-label={`Excluir corretor ${c.nome}`}
+                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-danger-soft hover:text-danger transition-colors"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-1.5 text-xs text-muted-foreground border-y border-border/60 py-3">
@@ -151,7 +322,7 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
 
             <div className="grid grid-cols-2 gap-2 text-center text-xs">
               <div className="rounded-lg bg-muted/40 p-2">
-                <span className="block font-display font-semibold text-lg text-foreground tabular">
+                <span className="block font-semibold text-lg text-foreground tabular-nums">
                   {c.totalClientes || 0}
                 </span>
                 <span className="text-[0.68rem] text-muted-foreground">
@@ -159,7 +330,7 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
                 </span>
               </div>
               <div className="rounded-lg bg-muted/40 p-2">
-                <span className="block font-display font-semibold text-lg text-foreground tabular">
+                <span className="block font-semibold text-lg text-foreground tabular-nums">
                   {c.totalApolices || 0}
                 </span>
                 <span className="text-[0.68rem] text-muted-foreground">
@@ -175,12 +346,16 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
       <Modal
         isOpen={isNewModalOpen}
         onClose={() => setIsNewModalOpen(false)}
-        title="Novo corretor"
-        subtitle="Cadastre um corretor autorizado com registro SUSEP e dados de contato."
+        title={editingCorretor ? 'Editar corretor' : 'Novo corretor'}
+        subtitle={
+          editingCorretor
+            ? `Altere os dados profissionais e de contato de ${editingCorretor.nome}.`
+            : 'Cadastre um corretor autorizado com registro SUSEP e dados de contato.'
+        }
       >
         <form onSubmit={handleCreateSubmit} className="space-y-4">
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
               Nome Completo *
             </label>
             <input
@@ -195,7 +370,7 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 Registro SUSEP *
               </label>
               <input
@@ -209,7 +384,7 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
             </div>
 
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 Especialidade
               </label>
               <input
@@ -224,7 +399,7 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 E-mail Corporativo *
               </label>
               <input
@@ -238,13 +413,16 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
             </div>
 
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 Telefone
               </label>
               <input
-                type="text"
+                type="tel"
+                inputMode="numeric"
+                autoComplete="tel-national"
+                maxLength={15}
                 value={form.telefone}
-                onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+                onChange={(e) => setForm({ ...form, telefone: formatTelefone(e.target.value) })}
                 placeholder="(61) 98765-4321"
                 className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
               />
@@ -252,7 +430,7 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
               Status Operacional
             </label>
             <select
@@ -260,9 +438,9 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
               onChange={(e) => setForm({ ...form, status: e.target.value })}
               className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
             >
-              <option value="Ativo">Ativo</option>
-              <option value="Férias">Férias</option>
-              <option value="Inativo">Inativo</option>
+              <option value="ATIVO">Ativo</option>
+              <option value="FERIAS">Férias</option>
+              <option value="INATIVO">Inativo</option>
             </select>
           </div>
 
@@ -278,7 +456,7 @@ export const CorretoresTab = ({ currentUser, currentRole }) => {
               type="submit"
               className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90"
             >
-              Salvar corretor
+              {editingCorretor ? 'Salvar alterações' : 'Salvar corretor'}
             </button>
           </div>
         </form>

@@ -15,7 +15,8 @@ Este documento contém todas as instruções necessárias para preparar seu ambi
    - [Cenário B: Subir apenas o PostgreSQL (Para desenvolvimento na IDE)](#cenário-b-subir-apenas-o-postgresql-modo-híbrido)
 4. [Comandos Úteis de Gerenciamento do Docker](#4-comandos-úteis-de-gerenciamento-do-docker)
 5. [Testando os Endpoints Iniciais](#5-testando-os-endpoints-iniciais)
-6. [Resolução de Problemas Comuns](#6-resolução-de-problemas-comuns)
+6. [Backup e Restauração do Banco](#6-backup-e-restauração-do-banco)
+7. [Resolução de Problemas Comuns](#7-resolução-de-problemas-comuns)
 
 ---
 
@@ -169,6 +170,31 @@ O arquivo `docker-compose.yml` está configurado para subir:
 
 ---
 
+### Antes de subir: arquivo `.env`
+
+As configurações sensíveis ficam no arquivo `.env` da raiz do projeto, que **não vai para o Git**. O modelo é o `.env.example`:
+
+```bash
+cp .env.example .env      # no Windows: copy .env.example .env
+```
+
+Preencha a variável `JWT_SECRET` com pelo menos 32 caracteres aleatórios. Ela assina os tokens de login, e quem a conhece consegue se passar por qualquer usuário. Para gerar uma chave:
+
+```bash
+openssl rand -base64 48
+```
+```powershell
+powershell -Command "[Convert]::ToBase64String((1..48 | ForEach-Object { Get-Random -Maximum 256 }))"
+```
+
+| Variável | Para que serve | Se não for definida |
+|---|---|---|
+| `JWT_SECRET` | Chave de assinatura dos logins | A API gera uma chave temporária a cada reinício e todos precisam entrar de novo (aviso no log). Com menos de 32 caracteres, a API **não sobe**. |
+| `JWT_EXPIRATION_SECONDS` | Validade do login em segundos | 86400 (24 horas) |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Banco de dados | `corretora_db` / `postgres` / `postgres` |
+
+Depois de alterar o `.env`, aplique com `docker compose up -d`.
+
 ### Cenário A: Subir Banco de Dados + Aplicação + Frontend (Completo)
 
 Para compilar o código e subir todos os serviços de uma vez em segundo plano (modo detached):
@@ -223,49 +249,73 @@ Abaixo estão os comandos mais frequentes no dia a dia:
 
 ## 5. Testando os Endpoints Iniciais
 
-Após subir a aplicação com `docker compose up -d --build`, você pode testar se a API está respondendo corretamente usando `curl` no terminal ou ferramentas como Postman/Insomnia:
+Após subir a aplicação com `docker compose up -d --build`, acesse `http://localhost:3000` e entre com uma das contas de demonstração criadas automaticamente na primeira inicialização:
 
-### 1. Consultar Métricas do Dashboard
+| Perfil | E-mail | Senha |
+|---|---|---|
+| Administrador | `admin@hcr.com` | `admin123` |
+| Corretor | `carlos.silva@corretora.com` | `corretor123` |
+| Cliente | `joao.silva@email.com` | `cliente123` |
+
+Cada perfil vê um menu diferente (veja a matriz de permissões em [atualizacoes-documentacao-pdf.md](atualizacoes-documentacao-pdf.md#2-autenticação-e-autorização-p-32--texto-substituto)).
+
+Para testar a API direto pelo terminal (ou Postman/Insomnia):
+
+### 1. Consultar o catálogo de seguros (rota pública)
 ```bash
-curl -X GET http://localhost:8080/dashboard
+curl http://localhost:8080/seguros
 ```
-**Resposta esperada (HTTP 200)**:
+**Resposta (HTTP 200):** lista de seguros com `valorBase` e `coberturas`.
+
+### 2. Fazer login e obter o token
+```bash
+curl -X POST http://localhost:8080/auth/login   -H "Content-Type: application/json"   -d '{"email": "admin@hcr.com", "senha": "admin123"}'
+```
+**Resposta (HTTP 200):**
 ```json
 {
-  "totalClientes": 142,
-  "taxaConversao": "74.5%",
-  "faturamentoMensal": 185400.00,
-  "apolicesPendentes": 12,
-  "apolicesAtivas": 98
-}
-```
-
-### 2. Consultar Lista de Seguros
-```bash
-curl -X GET http://localhost:8080/seguros
-```
-**Resposta esperada (HTTP 200)**:
-Lista com os tipos de seguros cadastrados.
-
-### 3. Teste de Login (Autenticação)
-```bash
-curl -X POST http://localhost:8080/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email": "corretor@empresa.com", "senha": "senhaSegura123"}'
-```
-**Resposta esperada (HTTP 200)**:
-```json
-{
-  "status": "AUTENTICADO",
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
   "tipo": "Bearer",
-  "token": "stub-jwt-token-placeholder",
-  "usuario": "corretor@empresa.com"
+  "userId": 1,
+  "email": "admin@hcr.com",
+  "perfilAcesso": "ADMINISTRADOR",
+  "nome": "Dalton Rezende (Gestão)",
+  "status": "ATIVO"
 }
 ```
+
+### 3. Chamar uma rota protegida com o token
+```bash
+TOKEN="cole_o_token_aqui"
+curl http://localhost:8080/dashboard -H "Authorization: Bearer $TOKEN"
+```
+**Resposta (HTTP 200):** indicadores como `totalClientes`, `apolicesAtivas`, `apolicesProximasVencimento` e `faturamentoTotalEstimado`.
+
+### 4. Respostas de erro esperadas
+| Situação | Código |
+|---|---|
+| Rota protegida sem token (ou token expirado) | `401` – "Faça login para acessar este recurso." |
+| Perfil sem permissão (ex.: cliente chamando `/usuarios`) | `403` – "Seu perfil não tem permissão para realizar esta operação." |
+| Dados inválidos (ex.: CPF com dígito verificador errado) | `400` com a mensagem do problema |
 
 ---
 
-## 6. Resolução de Problemas Comuns
+## 6. Backup e Restauração do Banco
+
+Os scripts da pasta `scripts/` geram e restauram cópias do banco de dados (RNF21). Os arquivos ficam em `backups/` (fora do Git, pois contêm dados) e são mantidos os **14 backups mais recentes**.
+
+| Ação | Windows (PowerShell) | Linux / Git Bash |
+|---|---|---|
+| Gerar backup | `powershell -ExecutionPolicy Bypass -File scripts\backup-banco.ps1` | `./scripts/backup-banco.sh` |
+| Restaurar | `powershell -ExecutionPolicy Bypass -File scripts\restaurar-banco.ps1 backups\<arquivo>.sql` | `./scripts/restaurar-banco.sh backups/<arquivo>.sql` |
+
+- O backup é um arquivo `.sql` com data e hora no nome (ex.: `corretora_db_2026-11-16_2303.sql`).
+- A restauração **substitui todos os dados atuais** pelos do arquivo e pede confirmação antes. Depois de restaurar, reinicie a aplicação com `docker compose restart app`.
+- Para backups automáticos, agende o script no **Agendador de Tarefas** do Windows ou no `cron` do Linux (ex.: todo dia às 23h: `0 23 * * * /caminho/do/projeto/scripts/backup-banco.sh`).
+
+---
+
+## 7. Resolução de Problemas Comuns
 
 ### 1. Conflito de Porta (`Port 5432 is already in use` ou `Port 8080 is already in use`)
 - **Causa**: Você já possui uma instância local do PostgreSQL ou Tomcat/outra aplicação rodando nessas portas.
@@ -273,7 +323,14 @@ curl -X POST http://localhost:8080/auth/login \
   - Parar o serviço local do PostgreSQL:
     - No Windows: Abra o `services.msc`, localize o serviço do PostgreSQL e clique em "Parar".
     - No Linux: `sudo systemctl stop postgresql`.
-  - Alternativamente, altere a porta externa mapeada no [docker-compose.yml](file:///home/sunshine/Projeto_Integrador_Corretora/docker-compose.yml) (ex: `"5433:5432"`).
+  - Alternativamente, mude só a porta externa **sem alterar o `docker-compose.yml` do repositório**: crie na raiz do projeto um arquivo `docker-compose.override.yml` (o Docker Compose o lê automaticamente) com o conteúdo abaixo e rode `docker compose up -d` de novo. O banco passa a responder em `localhost:5433`; a aplicação não é afetada, pois fala com o banco pela rede interna do Docker.
+    ```yaml
+    services:
+      postgres:
+        ports: !override
+          - "127.0.0.1:5433:5432"
+    ```
+    Esse arquivo é só da sua máquina: não faça commit dele.
 
 ### 2. Erro de permissão no Linux (`Got permission denied while trying to connect to the Docker daemon socket`)
 - **Causa**: O usuário atual não tem permissão para acessar o socket do Docker.

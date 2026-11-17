@@ -68,8 +68,12 @@ public class UsuarioService {
 
     @Transactional
     public UsuarioResponse alterarPerfil(Long id, String novoPerfil) {
+        String perfil = novoPerfil == null ? "" : novoPerfil.trim().toUpperCase();
+        if (!java.util.Set.of("ADMINISTRADOR", "CORRETOR", "CLIENTE").contains(perfil)) {
+            throw new IllegalArgumentException("Perfil inválido. Use ADMINISTRADOR, CORRETOR ou CLIENTE.");
+        }
         Usuario usuario = buscarEntidadePorId(id);
-        usuario.setPerfilAcesso(novoPerfil.toUpperCase());
+        usuario.setPerfilAcesso(perfil);
         return toResponse(usuarioRepository.save(usuario));
     }
 

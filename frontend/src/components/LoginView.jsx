@@ -1,25 +1,38 @@
 import React, { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Users, BellRing, KeyRound, Info } from 'lucide-react';
 import { apiFetch, setAuthToken } from '../api';
+import { useFeedback } from './ui/UiBits';
+import { mapLogin } from '../mappers';
+
+// Contas de demonstração criadas pelo DataInitializer (as abas apenas preenchem o formulário)
+const CONTAS_DEMO = [
+  { role: 'admin', label: 'Administrador', email: 'admin@hcr.com', senha: 'admin123' },
+  { role: 'corretor', label: 'Corretor', email: 'carlos.silva@corretora.com', senha: 'corretor123' },
+  { role: 'cliente', label: 'Cliente', email: 'joao.silva@email.com', senha: 'cliente123' }
+];
+
+const DESTAQUES = [
+  { icon: Users, texto: 'Clientes, corretores, seguros e apólices em um só lugar' },
+  { icon: BellRing, texto: 'Alertas de vencimento e acompanhamento de propostas' },
+  { icon: KeyRound, texto: 'Acesso por perfil: administrador, corretor e cliente' }
+];
+
+const inputClass =
+  'h-11 w-full rounded-md border border-input bg-card pl-9 text-sm text-foreground transition-colors';
 
 export const LoginView = ({ onLoginSuccess }) => {
-  const roleProfiles = [
-    { role: 'admin', label: 'Administrador', email: 'admin@hcr.com', defaultPass: 'admin123', name: 'Dalton Rezende' },
-    { role: 'corretor', label: 'Corretor', email: 'carlos.silva@corretora.com', defaultPass: 'corretor123', name: 'Carlos Silva' },
-    { role: 'cliente', label: 'Cliente', email: 'joao.silva@email.com', defaultPass: 'cliente123', name: 'João Pereira da Silva' }
-  ];
-
-  const [selectedRole, setSelectedRole] = useState(roleProfiles[0].role);
-  const [email, setEmail] = useState(roleProfiles[0].email);
-  const [senha, setSenha] = useState(roleProfiles[0].defaultPass);
+  const { showInfo } = useFeedback();
+  const [selectedRole, setSelectedRole] = useState(CONTAS_DEMO[0].role);
+  const [email, setEmail] = useState(CONTAS_DEMO[0].email);
+  const [senha, setSenha] = useState(CONTAS_DEMO[0].senha);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const handleSelectRole = (profile) => {
-    setSelectedRole(profile.role);
-    setEmail(profile.email);
-    setSenha(profile.defaultPass);
+  const selecionarConta = (conta) => {
+    setSelectedRole(conta.role);
+    setEmail(conta.email);
+    setSenha(conta.senha);
     setError(null);
   };
 
@@ -34,44 +47,13 @@ export const LoginView = ({ onLoginSuccess }) => {
 
     setLoading(true);
     try {
-      // Tenta login oficial via backend /api/auth/login
       const data = await apiFetch('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, senha })
       });
-
       setAuthToken(data.token);
-      onLoginSuccess({
-        id: data.id,
-        nome: data.nome,
-        email: data.email,
-        perfil: data.perfil,
-        role: data.perfil === 'ADMINISTRADOR' ? 'admin' : data.perfil === 'CORRETOR' ? 'corretor' : 'cliente'
-      });
+      onLoginSuccess(mapLogin(data));
     } catch (err) {
-      // Se falhar a autenticação no backend (por exemplo, senha customizada da demo),
-      // verifica se é um dos perfis simulados para garantir continuidade fluida:
-      const fallbackProfile = roleProfiles.find((p) => p.email.toLowerCase() === email.toLowerCase());
-      if (fallbackProfile) {
-        // Tenta com a senha padrão do admin no backend se for admin
-        try {
-          const fallbackData = await apiFetch('/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({ email: 'admin@hcr.com', senha: 'admin123' })
-          });
-          setAuthToken(fallbackData.token);
-          onLoginSuccess({
-            id: fallbackProfile.role === 'admin' ? 1 : 2,
-            nome: fallbackProfile.name,
-            email: fallbackProfile.email,
-            perfil: fallbackProfile.role === 'admin' ? 'ADMINISTRADOR' : fallbackProfile.role === 'corretor' ? 'CORRETOR' : 'CLIENTE',
-            role: fallbackProfile.role
-          });
-          return;
-        } catch {
-          // segue para exibir erro
-        }
-      }
       setError(err.message || 'Credenciais inválidas. Verifique o e-mail e a senha digitados.');
     } finally {
       setLoading(false);
@@ -79,75 +61,83 @@ export const LoginView = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="grid min-h-screen bg-background lg:grid-cols-[1.05fr_1fr]">
-      {/* Coluna Esquerda - Hero Imagem e Mensagem HCR */}
-      <div className="relative hidden overflow-hidden lg:block">
-        <img
-          src="/login-brasilia.jpg"
-          alt="Arquitetura modernista de Brasília ao entardecer"
-          className="absolute inset-0 h-full w-full object-cover"
+    <div className="grid min-h-screen bg-background lg:grid-cols-2">
+      {/* Painel da marca */}
+      <section className="relative hidden flex-col justify-between overflow-hidden bg-primary p-12 text-primary-foreground lg:flex">
+        {/* Grade decorativa discreta */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage:
+              'linear-gradient(to right, currentColor 1px, transparent 1px), linear-gradient(to bottom, currentColor 1px, transparent 1px)',
+            backgroundSize: '48px 48px'
+          }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 p-12 text-ink-foreground">
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-signal">
-            HCR Corretora de Seguros · Brasília
-          </p>
-          <h1 className="mt-4 max-w-md font-display text-5xl leading-[1.05]">
-            Proteção bem construída, do contrato à renovação.
-          </h1>
-          <p className="mt-4 max-w-sm text-sm text-ink-foreground/80">
-            Clientes, corretores, seguros e apólices reunidos em um só lugar com tecnologia e segurança.
-          </p>
-        </div>
-      </div>
 
-      {/* Coluna Direita - Formulário de Acesso */}
-      <div className="flex items-center justify-center px-6 py-12">
-        <form onSubmit={handleSubmit} className="w-full max-w-sm animate-rise">
-          <div className="mb-8">
-            <span className="inline-flex size-12 items-center justify-center rounded-xl bg-gradient-signal font-display text-xl font-bold text-signal-foreground shadow-lift">
-              H
-            </span>
+        <div className="relative flex items-center gap-2.5">
+          <img src="/logo-hcr-monograma.png" alt="" className="size-10 brightness-0 invert" />
+          <div className="leading-tight">
+            <span className="block text-sm font-semibold">HCR Corretora de Seguros</span>
+            <span className="block text-xs text-primary-foreground/70">Brasília</span>
           </div>
+        </div>
 
-          <h2 className="text-3xl font-display font-medium text-foreground">
-            Acesse sua conta
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Entre com as credenciais cadastradas na HCR Corretora.
-          </p>
+        <div className="relative max-w-md">
+          <h1 className="text-4xl font-semibold leading-tight tracking-tight">
+            A rotina da corretora, do contrato à renovação.
+          </h1>
+          <ul className="mt-8 space-y-4">
+            {DESTAQUES.map(({ icon: Icon, texto }) => (
+              <li key={texto} className="flex items-start gap-3 text-sm text-primary-foreground/85">
+                <span className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-primary-foreground/15">
+                  <Icon className="size-4" />
+                </span>
+                {texto}
+              </li>
+            ))}
+          </ul>
+        </div>
 
-          {/* Abas Rápidas de Perfis */}
+        <p className="relative text-xs text-primary-foreground/60">© HCR Corretora de Seguros</p>
+      </section>
+
+      {/* Formulário de acesso */}
+      <div className="flex items-center justify-center px-6 py-12">
+        <form onSubmit={handleSubmit} className="w-full max-w-sm animate-fade-in">
+          <img src="/logo-hcr.png" alt="HCR Corretora de Seguros" className="mx-auto h-28 w-auto" />
+
+          <h2 className="mt-8 text-2xl font-semibold tracking-tight text-foreground">Acesse sua conta</h2>
+          <p className="mt-2 text-sm text-muted-foreground">Entre com o e-mail e a senha cadastrados na HCR Corretora.</p>
+
+          {/* Contas de demonstração */}
           <div
             className="mt-8 grid grid-cols-3 gap-1 rounded-lg border border-border bg-muted p-1"
             role="tablist"
-            aria-label="Perfil de acesso"
+            aria-label="Contas de demonstração"
           >
-            {roleProfiles.map((p) => {
-              const isSelected = selectedRole === p.role;
+            {CONTAS_DEMO.map((conta) => {
+              const isSelected = selectedRole === conta.role;
               return (
                 <button
-                  key={p.role}
+                  key={conta.role}
                   type="button"
                   role="tab"
                   aria-selected={isSelected}
-                  onClick={() => handleSelectRole(p)}
-                  className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-all ${
-                    isSelected
-                      ? 'bg-card text-foreground shadow-card'
-                      : 'text-muted-foreground hover:text-foreground'
+                  onClick={() => selecionarConta(conta)}
+                  className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                    isSelected ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  {p.label}
+                  {conta.label}
                 </button>
               );
             })}
           </div>
 
           <div className="mt-6 space-y-4">
-            {/* Campo E-mail */}
             <div className="space-y-1.5">
-              <label htmlFor="email" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <label htmlFor="email" className="text-sm font-medium text-foreground">
                 E-mail
               </label>
               <div className="relative">
@@ -158,22 +148,26 @@ export const LoginView = ({ onLoginSuccess }) => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="h-11 w-full rounded-md border border-input bg-card pl-9 pr-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                  placeholder="exemplo@hcrseguros.com.br"
+                  className={`${inputClass} pr-3`}
+                  placeholder="voce@hcrseguros.com.br"
                 />
               </div>
             </div>
 
-            {/* Campo Senha */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label htmlFor="senha" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <label htmlFor="senha" className="text-sm font-medium text-foreground">
                   Senha
                 </label>
                 <button
                   type="button"
-                  onClick={() => alert('Para redefinição de senha, contate o administrador em admin@hcr.com.')}
-                  className="text-xs font-semibold text-primary hover:underline"
+                  onClick={() =>
+                    showInfo(
+                      'Para redefinir sua senha, entre em contato com o administrador pelo e-mail admin@hcr.com.',
+                      'Esqueceu a senha?'
+                    )
+                  }
+                  className="text-xs font-medium text-primary hover:underline"
                 >
                   Esqueci minha senha
                 </button>
@@ -187,7 +181,7 @@ export const LoginView = ({ onLoginSuccess }) => {
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
                   placeholder="••••••••"
-                  className="h-11 w-full rounded-md border border-input bg-card pl-9 pr-10 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  className={`${inputClass} pr-10`}
                 />
                 <button
                   type="button"
@@ -202,25 +196,23 @@ export const LoginView = ({ onLoginSuccess }) => {
           </div>
 
           {error && (
-            <div className="mt-4 rounded-lg bg-danger-soft px-3 py-2.5 text-sm text-danger border border-danger/20 flex items-center gap-2">
-              <span>{error}</span>
+            <div role="alert" className="mt-4 rounded-md border border-danger/20 bg-danger-soft px-3 py-2.5 text-sm text-danger">
+              {error}
             </div>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground font-semibold shadow hover:bg-primary/90 transition-colors disabled:opacity-50"
+            className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
-            {loading ? 'Entrando...' : 'Entrar'}
+            {loading ? 'Entrando…' : 'Entrar'}
           </button>
 
-          <div className="mt-6 rounded-lg border border-border/80 bg-accent/40 p-3 text-xs text-muted-foreground flex items-start gap-2">
-            <ShieldCheck className="size-4 text-primary shrink-0 mt-0.5" />
-            <span>
-              <strong>Ambiente Integrado:</strong> Autenticação via JWT (HMAC-SHA256) conectada à base de dados PostgreSQL da corretora.
-            </span>
-          </div>
+          <p className="mt-6 flex items-start gap-2 text-xs text-muted-foreground">
+            <Info className="mt-0.5 size-3.5 shrink-0" />
+            As abas acima preenchem as contas de demonstração de cada perfil.
+          </p>
         </form>
       </div>
     </div>

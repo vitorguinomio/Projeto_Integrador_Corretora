@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import { PageHeader, StatCard, StatusBadge, SectionCard, EmptyState } from './ui/UiBits';
 import { apiFetch } from '../api';
-
+import { mapAlerta, mapApolice, mapCotacao, mapSeguro } from '../mappers';
+import { pode } from '../permissoes';
 export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
   const [stats, setStats] = useState({
     totalClientes: 0,
@@ -35,26 +36,32 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
     try {
       setLoading(true);
       const [statsData, apolicesData, cotacoesData, alertasData, segurosData] = await Promise.all([
-        apiFetch('/dashboard/stats').catch(() => null),
+        // Totais da corretora são só da equipe; o cliente vê os números das próprias apólices
+        pode(currentRole, 'verIndicadoresGerais') ? apiFetch('/dashboard/stats').catch(() => null) : null,
         apiFetch('/apolices').catch(() => []),
         apiFetch('/cotacoes').catch(() => []),
         apiFetch('/alertas').catch(() => []),
         apiFetch('/seguros').catch(() => [])
+      ]).then(([stats, apolices, cotacoes, alertas, seguros]) => [
+        stats,
+        (apolices || []).map(mapApolice),
+        (cotacoes || []).map((c) => mapCotacao(c)),
+        (alertas || []).map(mapAlerta),
+        (seguros || []).map(mapSeguro)
       ]);
-
       if (statsData) {
         setStats({
-          totalClientes: statsData.totalClientes ?? 12,
+          totalClientes: statsData.totalClientes ?? 0,
           apolicesAtivas: statsData.apolicesAtivas ?? 0,
           totalCotacoes: statsData.cotacoesPendentes ?? (cotacoesData || []).length,
           alertasPendentes: statsData.apolicesProximasVencimento ?? (alertasData || []).length,
           receitaEstimada: statsData.faturamentoTotalEstimado ?? statsData.receitaEstimada ?? 0
         });
       } else {
-        const ativas = (apolicesData || []).filter((a) => a.situacao === 'Ativa' || a.situacao === 'Em renovação');
+        const ativas = (apolicesData || []).filter((a) => a.situacaoCodigo === 'ATIVA');
         const receita = ativas.reduce((acc, curr) => acc + (Number(curr.premio) || 0), 0);
         setStats({
-          totalClientes: 12,
+          totalClientes: 0,
           apolicesAtivas: ativas.length,
           totalCotacoes: (cotacoesData || []).length,
           alertasPendentes: (alertasData || []).length,
@@ -74,7 +81,7 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
           return end >= today && end <= next30;
         })
         .sort((a, b) => new Date(a.dataTermino) - new Date(b.dataTermino));
-      setExpiringPolicies(expiring.length > 0 ? expiring : (apolicesData || []).slice(0, 4));
+      setExpiringPolicies(expiring);
 
       setRecentQuotes((cotacoesData || []).slice(0, 5));
       setRecentAlerts((alertasData || []).slice(0, 4));
@@ -102,19 +109,18 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  const firstName = currentUser?.nome ? currentUser.nome.split(' ')[0] : 'Helena';
-  const isCorretor = currentRole === 'corretor';
+  const firstName = currentUser?.nome ? currentUser.nome.split(' ')[0] : '';
+  const isCliente = currentRole === 'cliente';
 
   return (
-    <div className="space-y-8 animate-rise">
+    <div className="space-y-6">
       {/* Page Header */}
       <PageHeader
-        eyebrow={isCorretor ? 'Minha carteira' : 'Visão geral da corretora'}
-        title={`Bom dia, ${firstName}.`}
+        title={isCliente ? 'Minha área' : 'Painel'}
         description={
           expiringPolicies.length > 0
-            ? `Você tem ${expiringPolicies.length} apólice(s) com atenção no período e ${recentQuotes.length} cotação(ões) registradas.`
-            : 'Nenhuma apólice vencendo nos próximos 30 dias. Carteira em dia.'
+            ? `Olá, ${firstName}. ${expiringPolicies.length} apólice(s) vencem nos próximos 30 dias e há ${recentQuotes.length} cotação(ões) registradas.`
+            : `Olá, ${firstName}. Nenhuma apólice vence nos próximos 30 dias.`
         }
         actions={
           <>
@@ -123,8 +129,9 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
               className="inline-flex items-center justify-center gap-2 rounded-md border border-input bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-accent transition-colors"
             >
               <Plus className="size-4" />
-              Nova cotação
+              {isCliente ? 'Solicitar cotação' : 'Nova cotação'}
             </button>
+            {pode(currentRole, 'gerenciarClientes') && (
             <button
               onClick={() => setActiveTab('clientes')}
               className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
@@ -132,11 +139,33 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
               <Users className="size-4" />
               Cadastrar cliente
             </button>
+            )}
           </>
         }
       />
 
       {/* 4 Stat Cards */}
+      {isCliente ? (
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Apólices ativas" value={stats.apolicesAtivas} hint="seguros vigentes" icon={Shield} />
+        <StatCard
+          label="Prêmio anual"
+          value={formatCurrency(stats.receitaEstimada)}
+          hint="soma das suas apólices ativas"
+          icon={ArrowUpRight}
+          tone="destaque"
+          onClick={() => setActiveTab('apolices')}
+          actionLabel="Prêmio anual: ver minhas apólices"
+        />
+        <StatCard label="Cotações" value={stats.totalCotacoes} hint="solicitadas por você" icon={FileCheck} />
+        <StatCard
+          label="Vencimentos"
+          value={expiringPolicies.length}
+          hint="apólices vencendo em 30 dias"
+          icon={Shield}
+        />
+      </div>
+      ) : (
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Clientes"
@@ -155,15 +184,18 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
           value={formatCurrency(stats.receitaEstimada)}
           hint="soma dos prêmios anuais"
           icon={ArrowUpRight}
-          tone="signal"
+          tone="destaque"
+          onClick={() => setActiveTab('premios')}
+          actionLabel="Prêmios sob gestão: ver detalhamento"
         />
         <StatCard
           label="Cotações em aberto"
           value={stats.totalCotacoes}
-          hint={`${stats.alertasPendentes} alertas pendentes`}
+          hint={`${stats.alertasPendentes} apólice(s) vencendo em 30 dias`}
           icon={FileCheck}
         />
       </div>
+      )}
 
       {/* Grid Principal */}
       <div className="grid gap-6 lg:grid-cols-3">
@@ -217,7 +249,7 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
 
                       <div className="flex items-center justify-between sm:justify-end gap-3">
                         <div className="text-right">
-                          <p className="font-semibold text-sm tabular text-foreground">
+                          <p className="font-semibold text-sm tabular-nums text-foreground">
                             {formatCurrency(apolice.premio)}
                           </p>
                           <span className="inline-flex items-center gap-1 text-[0.7rem] font-medium text-warning">
@@ -296,7 +328,7 @@ export const DashboardTab = ({ setActiveTab, currentUser, currentRole }) => {
           <SectionCard title="Distribuição por seguro">
             <div className="p-5 space-y-4">
               {insurances.map((seguro, idx) => {
-                const colors = ['bg-primary', 'bg-signal', 'bg-warning', 'bg-success', 'bg-accent'];
+                const colors = ['bg-primary', 'bg-success', 'bg-warning', 'bg-danger', 'bg-muted-foreground'];
                 const barColor = colors[idx % colors.length];
                 return (
                   <div key={seguro.id} className="space-y-1.5">

@@ -1,5 +1,7 @@
 package com.hcr.corretora.features.alertas;
 
+import com.hcr.corretora.core.security.UsuarioLogado;
+
 import com.hcr.corretora.features.alertas.dto.CriarNotificacaoRequest;
 import com.hcr.corretora.features.alertas.dto.NotificacaoResponse;
 import jakarta.validation.Valid;
@@ -15,9 +17,11 @@ import java.util.List;
 public class AlertaController {
 
     private final AlertaService alertaService;
+    private final UsuarioLogado usuarioLogado;
 
-    public AlertaController(AlertaService alertaService) {
+    public AlertaController(AlertaService alertaService, UsuarioLogado usuarioLogado) {
         this.alertaService = alertaService;
+        this.usuarioLogado = usuarioLogado;
     }
 
     @GetMapping
@@ -25,7 +29,8 @@ public class AlertaController {
             @RequestParam(required = false) Long usuarioId,
             Authentication authentication
     ) {
-        if (usuarioId != null) {
+        // Filtrar por outro usuário é exclusivo do administrador; os demais veem só as próprias
+        if (usuarioId != null && usuarioLogado.isAdministrador()) {
             return ResponseEntity.ok(alertaService.listarPorUsuarioId(usuarioId));
         }
         String email = authentication != null ? authentication.getName() : null;
@@ -40,6 +45,7 @@ public class AlertaController {
 
     @PatchMapping("/{id}/ler")
     public ResponseEntity<NotificacaoResponse> marcarComoLida(@PathVariable Long id) {
+        usuarioLogado.exigirAcessoAoUsuario(alertaService.buscarPorId(id).usuarioId());
         return ResponseEntity.ok(alertaService.marcarComoLida(id));
     }
 }

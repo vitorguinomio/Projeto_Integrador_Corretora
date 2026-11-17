@@ -1,5 +1,6 @@
 package com.hcr.corretora.features.auth;
 
+import com.hcr.corretora.core.validation.CpfCnpj;
 import com.hcr.corretora.core.security.JwtTokenService;
 import com.hcr.corretora.features.administradores.AdministradorRepository;
 import com.hcr.corretora.features.auth.dto.LoginRequest;
@@ -81,8 +82,9 @@ public class AuthService {
             throw new IllegalArgumentException("Já existe um usuário com o e-mail: " + email);
         }
 
-        if (clienteRepository.existsByCpfCnpj(request.cpfCnpj())) {
-            throw new IllegalArgumentException("Já existe um cliente cadastrado com o CPF/CNPJ: " + request.cpfCnpj());
+        String cpfCnpj = CpfCnpj.normalizar(request.cpfCnpj());
+        if (clienteRepository.existsByCpfCnpj(cpfCnpj) || clienteRepository.existsByCpfCnpj(CpfCnpj.somenteDigitos(cpfCnpj))) {
+            throw new IllegalArgumentException("Já existe um cliente cadastrado com o CPF/CNPJ: " + cpfCnpj);
         }
 
         Usuario usuario = new Usuario(
@@ -97,7 +99,7 @@ public class AuthService {
         Cliente cliente = new Cliente(
                 null,
                 request.nome().trim(),
-                request.cpfCnpj().trim(),
+                cpfCnpj,
                 request.dataNasc(),
                 email,
                 usuarioSalvo

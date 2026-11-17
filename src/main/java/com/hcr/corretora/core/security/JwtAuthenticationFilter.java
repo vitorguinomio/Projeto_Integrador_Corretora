@@ -1,5 +1,7 @@
 package com.hcr.corretora.core.security;
 
+import com.hcr.corretora.features.usuarios.Usuario;
+import com.hcr.corretora.features.usuarios.UsuarioRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,9 +21,11 @@ import java.util.Map;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenService jwtTokenService;
+    private final UsuarioRepository usuarioRepository;
 
-    public JwtAuthenticationFilter(JwtTokenService jwtTokenService) {
+    public JwtAuthenticationFilter(JwtTokenService jwtTokenService, UsuarioRepository usuarioRepository) {
         this.jwtTokenService = jwtTokenService;
+        this.usuarioRepository = usuarioRepository;
     }
 
     @Override
@@ -38,9 +42,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (jwtTokenService.validateToken(token)) {
                 Map<String, Object> claims = jwtTokenService.getClaims(token);
                 String email = (String) claims.get("sub");
-                String perfil = (String) claims.get("perfil");
 
-                if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                // O perfil e o status vêm do banco, não do token: um usuário desativado perde o
+                // acesso na hora e uma mudança de perfil vale imediatamente (EU21 / RF29)
+                Usuario usuario = email != null ? usuarioRepository.findByLoginEmail(email).orElse(null) : null;
+                boolean ativo = usuario != null && "ATIVO".equalsIgnoreCase(usuario.getStatus());
+                String perfil = usuario != null ? usuario.getPerfilAcesso() : null;
+
+                if (ativo && SecurityContextHolder.getContext().getAuthentication() == null) {
                     String roleName = perfil != null && perfil.startsWith("ROLE_") ? perfil : "ROLE_" + (perfil != null ? perfil : "CLIENTE");
                     var authorities = List.of(new SimpleGrantedAuthority(roleName));
 

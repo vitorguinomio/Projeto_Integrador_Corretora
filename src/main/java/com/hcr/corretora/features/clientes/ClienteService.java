@@ -1,5 +1,8 @@
 package com.hcr.corretora.features.clientes;
 
+import com.hcr.corretora.core.validation.CpfCnpj;
+import com.hcr.corretora.features.corretores.Corretor;
+import com.hcr.corretora.features.corretores.CorretorRepository;
 import com.hcr.corretora.features.apolices.ApoliceService;
 import com.hcr.corretora.features.apolices.dto.ApoliceResponse;
 import com.hcr.corretora.features.clientes.dto.ClienteHistoricoResponse;
@@ -27,14 +30,17 @@ public class ClienteService {
     private final PasswordEncoder passwordEncoder;
     private final CotacaoService cotacaoService;
     private final ApoliceService apoliceService;
+    private final CorretorRepository corretorRepository;
 
     public ClienteService(
             ClienteRepository clienteRepository,
             UsuarioRepository usuarioRepository,
             PasswordEncoder passwordEncoder,
             @Lazy CotacaoService cotacaoService,
-            @Lazy ApoliceService apoliceService
+            @Lazy ApoliceService apoliceService,
+            CorretorRepository corretorRepository
     ) {
+        this.corretorRepository = corretorRepository;
         this.clienteRepository = clienteRepository;
         this.usuarioRepository = usuarioRepository;
         this.passwordEncoder = passwordEncoder;
@@ -60,6 +66,7 @@ public class ClienteService {
                 .orElseThrow(() -> new IllegalArgumentException("Cliente não encontrado com id: " + id));
     }
 
+    @Transactional(readOnly = true)
     public List<ClienteResponse> buscar(String termo) {
         if (termo == null || termo.isBlank()) {
             return listarTodos();
@@ -69,6 +76,7 @@ public class ClienteService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public ClienteHistoricoResponse buscarHistorico(Long clienteId) {
         ClienteResponse cliente = buscarPorId(clienteId);
         List<CotacaoResponse> cotacoes = cotacaoService.listar(clienteId, null, null);
@@ -78,9 +86,10 @@ public class ClienteService {
 
     @Transactional
     public ClienteResponse criar(ClienteRequest request) {
-        String cpfLimpo = request.cpfCnpj().replaceAll("[^0-9]", "");
-        if (clienteRepository.existsByCpfCnpj(request.cpfCnpj()) || clienteRepository.existsByCpfCnpj(cpfLimpo)) {
-            throw new IllegalArgumentException("Já existe um cliente cadastrado com o CPF/CNPJ: " + request.cpfCnpj());
+        // Valida os dígitos verificadores e grava sempre no formato com máscara (RF30/RF31)
+        String cpfCnpj = CpfCnpj.normalizar(request.cpfCnpj());
+        if (cpfJaCadastrado(cpfCnpj)) {
+            throw new IllegalArgumentException("Já existe um cliente cadastrado com o CPF/CNPJ: " + cpfCnpj);
         }
 
         Usuario usuario = null;
@@ -97,11 +106,12 @@ public class ClienteService {
         Cliente cliente = new Cliente(
                 null,
                 request.nome().trim(),
-                request.cpfCnpj().trim(),
+                cpfCnpj,
                 request.dataNasc(),
                 request.email().trim().toLowerCase(),
                 usuario
         );
+        cliente.setCorretor(buscarCorretor(request.corretorId()));
 
         if (request.enderecos() != null) {
             for (EnderecoDto e : request.enderecos()) {
@@ -152,14 +162,23 @@ public class ClienteService {
     public ClienteResponse atualizar(Long id, ClienteRequest request) {
         Cliente cliente = buscarEntidadePorId(id);
 
-        if (!cliente.getCpfCnpj().equals(request.cpfCnpj()) && clienteRepository.existsByCpfCnpj(request.cpfCnpj())) {
-            throw new IllegalArgumentException("Já existe outro cliente cadastrado com o CPF/CNPJ: " + request.cpfCnpj());
+        // Só valida o documento quando ele muda (registros antigos podem ter CPF fora do padrão)
+        String cpfCnpj = cliente.getCpfCnpj();
+        boolean documentoAlterado = !CpfCnpj.somenteDigitos(cpfCnpj).equals(CpfCnpj.somenteDigitos(request.cpfCnpj()));
+        if (documentoAlterado) {
+            cpfCnpj = CpfCnpj.normalizar(request.cpfCnpj());
+            if (cpfJaCadastrado(cpfCnpj)) {
+                throw new IllegalArgumentException("Já existe outro cliente cadastrado com o CPF/CNPJ: " + cpfCnpj);
+            }
         }
 
         cliente.setNome(request.nome().trim());
-        cliente.setCpfCnpj(request.cpfCnpj().trim());
+        cliente.setCpfCnpj(cpfCnpj);
         cliente.setDataNasc(request.dataNasc());
         cliente.setEmail(request.email().trim().toLowerCase());
+        if (request.corretorId() != null) {
+            cliente.setCorretor(buscarCorretor(request.corretorId()));
+        }
 
         // Atualizar senhas se fornecido
         if (request.senhaAcesso() != null && !request.senhaAcesso().isBlank()) {
@@ -179,9 +198,9 @@ public class ClienteService {
             }
         }
 
-        // Atualizar endereços
-        cliente.getEnderecos().clear();
+        // Atualizar endereços (lista ausente no corpo = manter os atuais)
         if (request.enderecos() != null) {
+            cliente.getEnderecos().clear();
             for (EnderecoDto e : request.enderecos()) {
                 Endereco end = new Endereco(
                         null,
@@ -198,9 +217,9 @@ public class ClienteService {
             }
         }
 
-        // Atualizar telefones
-        cliente.getTelefones().clear();
+        // Atualizar telefones (lista ausente no corpo = manter os atuais)
         if (request.telefones() != null) {
+            cliente.getTelefones().clear();
             for (TelefoneDto t : request.telefones()) {
                 String ddd = t.ddd();
                 String num = t.numero() != null ? t.numero() : "";
@@ -225,6 +244,20 @@ public class ClienteService {
         }
 
         return toResponse(clienteRepository.save(cliente));
+    }
+
+    private Corretor buscarCorretor(Long corretorId) {
+        if (corretorId == null) {
+            return null;
+        }
+        return corretorRepository.findById(corretorId)
+                .orElseThrow(() -> new IllegalArgumentException("Corretor não encontrado com id: " + corretorId));
+    }
+
+    /** Duplicidade considerando o documento com e sem máscara (registros antigos podem estar sem). */
+    private boolean cpfJaCadastrado(String cpfCnpjFormatado) {
+        return clienteRepository.existsByCpfCnpj(cpfCnpjFormatado)
+                || clienteRepository.existsByCpfCnpj(CpfCnpj.somenteDigitos(cpfCnpjFormatado));
     }
 
     @Transactional
@@ -263,6 +296,8 @@ public class ClienteService {
                 cliente.getDataNasc(),
                 cliente.getEmail(),
                 cliente.getUsuario() != null ? cliente.getUsuario().getId() : null,
+                cliente.getCorretor() != null ? cliente.getCorretor().getId() : null,
+                cliente.getCorretor() != null ? cliente.getCorretor().getNome() : null,
                 enderecosDto,
                 telefonesDto
         );

@@ -27,6 +27,10 @@ public class Seguro {
     @Column(name = "valor_base", precision = 10, scale = 2)
     private BigDecimal valorBase = BigDecimal.ZERO;
 
+    /** Percentual do prêmio que fica com a corretora como comissão (ex.: 15.00 = 15%). */
+    @Column(name = "percentual_comissao", precision = 5, scale = 2)
+    private BigDecimal percentualComissao = BigDecimal.ZERO;
+
     @OneToMany(mappedBy = "seguro", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonManagedReference
     private List<Cobertura> coberturas = new ArrayList<>();
@@ -75,6 +79,14 @@ public class Seguro {
 
     public BigDecimal getValorBase() {
         return valorBase;
+    }
+
+    public BigDecimal getPercentualComissao() {
+        return percentualComissao;
+    }
+
+    public void setPercentualComissao(BigDecimal percentualComissao) {
+        this.percentualComissao = percentualComissao != null ? percentualComissao : BigDecimal.ZERO;
     }
 
     public void setValorBase(BigDecimal valorBase) {

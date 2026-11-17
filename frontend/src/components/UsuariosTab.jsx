@@ -9,17 +9,16 @@ import {
   X,
   AlertCircle
 } from 'lucide-react';
-import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal } from './ui/UiBits';
+import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal, useFeedback } from './ui/UiBits';
 import { apiFetch } from '../api';
-
+import { mapUsuario } from '../mappers';
 export const UsuariosTab = ({ currentUser, currentRole }) => {
+  const { showSuccess, showError, showWarning, confirm } = useFeedback();
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
-
   // Modal
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [form, setForm] = useState({
-    nome: '',
     email: '',
     senha: '',
     perfil: 'CORRETOR'
@@ -28,63 +27,84 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
   useEffect(() => {
     loadUsuarios();
   }, []);
-
   const loadUsuarios = async () => {
     try {
       setLoading(true);
       const data = await apiFetch('/usuarios').catch(() => []);
-      setUsuarios(data || []);
+      setUsuarios((data || []).map(mapUsuario));
     } catch (err) {
       console.error('Erro ao carregar usuários:', err);
     } finally {
       setLoading(false);
     }
   };
-
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
-    if (!form.nome || !form.email || !form.senha) {
-      alert('Preencha os campos obrigatórios (*).');
+    if (!form.email || !form.senha) {
+      showWarning('Preencha os campos obrigatórios (*).', 'Campos obrigatórios');
       return;
     }
     try {
+      // Formato de UsuarioCreateRequest (backend)
       const payload = {
-        nome: form.nome,
-        email: form.email,
+        loginEmail: form.email,
         senha: form.senha,
-        perfil: form.perfil
+        perfilAcesso: form.perfil,
+        status: 'ATIVO'
       };
-
       const novo = await apiFetch('/usuarios', {
         method: 'POST',
         body: JSON.stringify(payload)
       });
-
-      setUsuarios([...usuarios, novo]);
+      setUsuarios([...usuarios, mapUsuario(novo)]);
       setIsNewModalOpen(false);
       setForm({
-        nome: '',
         email: '',
         senha: '',
         perfil: 'CORRETOR'
       });
-      alert('Usuário cadastrado com sucesso!');
+      showSuccess('O usuário foi cadastrado com sucesso.', 'Usuário cadastrado!');
     } catch (err) {
-      alert(`Erro ao cadastrar usuário: ${err.message}`);
+      showError(err.message, 'Erro ao cadastrar usuário');
+    }
+  };
+  const PERFIS = [
+    { valor: 'ADMINISTRADOR', rotulo: 'Administrador' },
+    { valor: 'CORRETOR', rotulo: 'Corretor' },
+    { valor: 'CLIENTE', rotulo: 'Cliente' }
+  ];
+  const rotuloPerfil = (perfil) => PERFIS.find((p) => p.valor === perfil)?.rotulo || perfil;
+
+  // Troca de perfil (RF28): passa a valer na hora, inclusive para quem já está logado
+  const handleAlterarPerfil = async (usuario, novoPerfil) => {
+    if (novoPerfil === usuario.perfil) return;
+    const ok = await confirm({
+      title: 'Alterar perfil de acesso?',
+      message: `${usuario.email} passará de ${rotuloPerfil(usuario.perfil)} para ${rotuloPerfil(novoPerfil)} e verá apenas as telas desse perfil.`,
+      confirmLabel: 'Alterar perfil'
+    });
+    if (!ok) return;
+    try {
+      const atualizado = await apiFetch(`/usuarios/${usuario.id}/perfil`, {
+        method: 'PATCH',
+        body: JSON.stringify({ perfil: novoPerfil })
+      });
+      setUsuarios(usuarios.map((u) => (u.id === usuario.id ? mapUsuario(atualizado) : u)));
+      showSuccess(`${usuario.email} agora tem o perfil ${rotuloPerfil(novoPerfil)}.`, 'Perfil alterado');
+    } catch (err) {
+      showError(err.message, 'Erro ao alterar perfil');
     }
   };
 
   const handleToggleAtivo = async (usuario) => {
     try {
-      const novoStatus = !usuario.ativo;
-      await apiFetch(`/usuarios/${usuario.id}/status?ativo=${novoStatus}`, {
-        method: 'PUT'
+      const atualizado = await apiFetch(`/usuarios/${usuario.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: usuario.ativo ? 'INATIVO' : 'ATIVO' })
       });
-      setUsuarios(
-        usuarios.map((u) => (u.id === usuario.id ? { ...u, ativo: novoStatus } : u))
-      );
+      setUsuarios(usuarios.map((u) => (u.id === usuario.id ? mapUsuario(atualizado) : u)));
     } catch (err) {
-      alert(`Erro ao atualizar status: ${err.message}`);
+      showError(err.message, 'Erro ao atualizar status');
     }
   };
 
@@ -101,7 +121,7 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
   ];
 
   return (
-    <div className="space-y-6 animate-rise">
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <PageHeader
         eyebrow="Segurança"
@@ -123,11 +143,10 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
             <thead>
-              <tr className="border-b border-border bg-muted/40 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <tr className="border-b border-border bg-muted/60 text-xs font-medium text-muted-foreground">
                 <th className="px-5 py-3.5">Usuário</th>
                 <th className="px-5 py-3.5">Perfil</th>
                 <th className="px-5 py-3.5">Status</th>
-                <th className="px-5 py-3.5">Data de Criação</th>
                 <th className="px-5 py-3.5 text-right">Ação</th>
               </tr>
             </thead>
@@ -139,23 +158,43 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
                     : u.perfil === 'CORRETOR'
                     ? 'Corretor'
                     : 'Cliente';
+                const ehVoce = currentUser?.id === u.id;
                 return (
                   <tr key={u.id} className="hover:bg-accent/40 transition-colors">
                     <td className="px-5 py-4">
                       <div>
-                        <p className="font-semibold text-foreground text-sm">{u.nome}</p>
+                        <p className="font-semibold text-foreground text-sm">
+                          {u.nome}
+                          {ehVoce && <span className="ml-2 text-xs font-normal text-muted-foreground">(você)</span>}
+                        </p>
                         <span className="text-xs text-muted-foreground font-mono">{u.email}</span>
                       </div>
                     </td>
 
                     <td className="px-5 py-4">
-                      <StatusBadge status={perfilDisplay} />
+                      {ehVoce ? (
+                        <StatusBadge status={perfilDisplay} />
+                      ) : (
+                        <select
+                          value={u.perfil}
+                          onChange={(e) => handleAlterarPerfil(u, e.target.value)}
+                          aria-label={`Perfil de ${u.email}`}
+                          className="h-8 rounded-md border border-input bg-card px-2 text-xs font-medium text-foreground"
+                        >
+                          {PERFIS.map((p) => (
+                            <option key={p.valor} value={p.valor}>
+                              {p.rotulo}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </td>
 
                     <td className="px-5 py-4">
                       <button
                         onClick={() => handleToggleAtivo(u)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+                        disabled={ehVoce}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors disabled:pointer-events-none ${
                           u.ativo
                             ? 'bg-success-soft text-success border border-success/30 hover:bg-danger-soft hover:text-danger'
                             : 'bg-muted text-muted-foreground border border-border hover:bg-success-soft hover:text-success'
@@ -166,17 +205,17 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
                       </button>
                     </td>
 
-                    <td className="px-5 py-4 text-xs text-muted-foreground">
-                      {u.dataCriacao ? u.dataCriacao.substring(0, 10) : '—'}
-                    </td>
-
                     <td className="px-5 py-4 text-right">
-                      <button
-                        onClick={() => handleToggleAtivo(u)}
-                        className="text-xs font-medium text-primary hover:underline"
-                      >
-                        {u.ativo ? 'Desativar' : 'Reativar'}
-                      </button>
+                      {ehVoce ? (
+                        <span className="text-xs text-muted-foreground">Sua conta</span>
+                      ) : (
+                        <button
+                          onClick={() => handleToggleAtivo(u)}
+                          className="text-xs font-medium text-primary hover:underline"
+                        >
+                          {u.ativo ? 'Desativar' : 'Reativar'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -191,7 +230,7 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
             <thead>
-              <tr className="border-b border-border bg-muted/40 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <tr className="border-b border-border bg-muted/60 text-xs font-medium text-muted-foreground">
                 <th className="px-5 py-3.5">Funcionalidade</th>
                 <th className="px-5 py-3.5 text-center">Administrador</th>
                 <th className="px-5 py-3.5 text-center">Corretor</th>
@@ -239,21 +278,7 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
       >
         <form onSubmit={handleCreateSubmit} className="space-y-4">
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
-              Nome Completo *
-            </label>
-            <input
-              type="text"
-              required
-              value={form.nome}
-              onChange={(e) => setForm({ ...form, nome: e.target.value })}
-              placeholder="Ex: Amanda Nogueira"
-              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
               E-mail de Acesso *
             </label>
             <input
@@ -267,7 +292,7 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
               Senha Provisória *
             </label>
             <input
@@ -281,7 +306,7 @@ export const UsuariosTab = ({ currentUser, currentRole }) => {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
               Perfil de Acesso
             </label>
             <select

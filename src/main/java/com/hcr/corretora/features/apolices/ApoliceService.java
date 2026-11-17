@@ -1,6 +1,7 @@
 package com.hcr.corretora.features.apolices;
 
 import com.hcr.corretora.features.apolices.dto.ApoliceRequest;
+import com.hcr.corretora.features.apolices.dto.AtualizacaoApoliceRequest;
 import com.hcr.corretora.features.apolices.dto.ApoliceResponse;
 import com.hcr.corretora.features.apolices.dto.ParcelaResponse;
 import com.hcr.corretora.features.apolices.dto.RenovacaoRequest;
@@ -79,6 +80,8 @@ public class ApoliceService {
         Seguro seguro = seguroRepository.findById(request.seguroId())
                 .orElseThrow(() -> new IllegalArgumentException("Seguro não encontrado com id: " + request.seguroId()));
 
+        validarVigencia(request.dataInicio(), request.dataTermino());
+
         String numApolice = request.numeroApolice();
         if (numApolice == null || numApolice.isBlank()) {
             numApolice = "APO-" + LocalDate.now().getYear() + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
@@ -110,9 +113,70 @@ public class ApoliceService {
         return toResponse(salva);
     }
 
+    /**
+     * Alteração de uma apólice ativa (RF13): corretor, vigência e prêmio.
+     * Se o prêmio mudar, as parcelas já pagas são mantidas e o saldo restante
+     * (novo prêmio - valor pago) é redistribuído entre as parcelas pendentes.
+     */
+    @Transactional
+    public ApoliceResponse atualizar(Long id, AtualizacaoApoliceRequest request) {
+        Apolice apolice = buscarEntidadePorId(id);
+        if (!"ATIVA".equals(apolice.getSituacao())) {
+            throw new IllegalArgumentException("Somente apólices ativas podem ser alteradas.");
+        }
+        validarVigencia(request.dataInicio(), request.dataTermino());
+
+        Corretor corretor = corretorRepository.findById(request.corretorId())
+                .orElseThrow(() -> new IllegalArgumentException("Corretor não encontrado com id: " + request.corretorId()));
+
+        BigDecimal novoPremio = request.valorPremio().setScale(2, RoundingMode.HALF_UP);
+        if (apolice.getValorPremio() == null || novoPremio.compareTo(apolice.getValorPremio()) != 0) {
+            redistribuirPremio(apolice, novoPremio);
+        }
+
+        apolice.setCorretor(corretor);
+        apolice.setDataInicio(request.dataInicio());
+        apolice.setDataTermino(request.dataTermino());
+        apolice.setValorPremio(novoPremio);
+        return toResponse(apoliceRepository.save(apolice));
+    }
+
+    private void redistribuirPremio(Apolice apolice, BigDecimal novoPremio) {
+        List<ParcelaPagamento> pendentes = apolice.getParcelas().stream()
+                .filter(p -> !"PAGO".equals(p.getStatus()))
+                .sorted((a, b) -> a.getDataVencimento().compareTo(b.getDataVencimento()))
+                .toList();
+        BigDecimal pago = apolice.getParcelas().stream()
+                .filter(p -> "PAGO".equals(p.getStatus()))
+                .map(ParcelaPagamento::getValor)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal restante = novoPremio.subtract(pago);
+
+        if (restante.signum() < 0) {
+            throw new IllegalArgumentException("O novo prêmio (" + moeda(novoPremio) + ") é menor que o valor já pago ("
+                    + moeda(pago) + ").");
+        }
+        if (pendentes.isEmpty()) {
+            throw new IllegalArgumentException("Todas as parcelas desta apólice já foram pagas; o prêmio não pode ser alterado.");
+        }
+
+        BigDecimal valorParcela = restante.divide(BigDecimal.valueOf(pendentes.size()), 2, RoundingMode.DOWN);
+        BigDecimal distribuido = BigDecimal.ZERO;
+        for (int i = 0; i < pendentes.size(); i++) {
+            // a última parcela recebe a diferença de arredondamento
+            BigDecimal valor = i == pendentes.size() - 1 ? restante.subtract(distribuido) : valorParcela;
+            pendentes.get(i).setValor(valor);
+            distribuido = distribuido.add(valor);
+        }
+    }
+
     @Transactional
     public ApoliceResponse renovar(Long id, RenovacaoRequest request) {
         Apolice apoliceAntiga = buscarEntidadePorId(id);
+        if (!"ATIVA".equals(apoliceAntiga.getSituacao())) {
+            throw new IllegalArgumentException("Somente apólices ativas podem ser renovadas.");
+        }
+        validarVigencia(request.novaDataInicio(), request.novaDataTermino());
 
         apoliceAntiga.setSituacao("EM_RENOVACAO");
         apoliceRepository.save(apoliceAntiga);
@@ -143,12 +207,42 @@ public class ApoliceService {
     }
 
     @Transactional
-    public ApoliceResponse cancelar(Long id) {
+    public ApoliceResponse cancelar(Long id, String motivo) {
         Apolice apolice = buscarEntidadePorId(id);
+        if ("CANCELADA".equals(apolice.getSituacao()) || "VENCIDA".equals(apolice.getSituacao())) {
+            throw new IllegalArgumentException("Esta apólice já está " + apolice.getSituacao().toLowerCase() + ".");
+        }
         apolice.setSituacao("CANCELADA");
+        apolice.setMotivoCancelamento(motivo != null && !motivo.isBlank() ? motivo.trim() : null);
+        apolice.setDataCancelamento(LocalDate.now());
         return toResponse(apoliceRepository.save(apolice));
     }
 
+    /**
+     * Marca como VENCIDA as apólices cuja vigência terminou (RF15). Inclui as que estavam
+     * EM_RENOVACAO: a renovação já gerou uma nova apólice, e a antiga encerra no fim da vigência.
+     */
+    @Transactional
+    public int marcarApolicesVencidas() {
+        List<Apolice> vencidas = apoliceRepository.findBySituacaoInAndDataTerminoBefore(
+                List.of("ATIVA", "EM_RENOVACAO"), LocalDate.now());
+        vencidas.forEach(a -> a.setSituacao("VENCIDA"));
+        apoliceRepository.saveAll(vencidas);
+        return vencidas.size();
+    }
+
+    private static String moeda(BigDecimal valor) {
+        return java.text.NumberFormat.getCurrencyInstance(java.util.Locale.forLanguageTag("pt-BR"))
+                .format(valor).replace(' ', ' ');
+    }
+
+    private void validarVigencia(LocalDate inicio, LocalDate termino) {
+        if (inicio != null && termino != null && !termino.isAfter(inicio)) {
+            throw new IllegalArgumentException("A data de término deve ser posterior à data de início da vigência.");
+        }
+    }
+
+    @Transactional(readOnly = true)
     public List<ApoliceResponse> listarAlertasVencimento(int dias) {
         LocalDate hoje = LocalDate.now();
         LocalDate limite = hoje.plusDays(dias);
@@ -157,6 +251,7 @@ public class ApoliceService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public List<ParcelaResponse> listarParcelasPorApolice(Long apoliceId) {
         return parcelaPagamentoRepository.findByApoliceId(apoliceId).stream()
                 .map(this::toParcelaResponse)
@@ -200,6 +295,8 @@ public class ApoliceService {
                 a.getSeguro() != null ? a.getSeguro().getId() : null,
                 a.getSeguro() != null ? a.getSeguro().getNome() : null,
                 a.getApoliceAnterior() != null ? a.getApoliceAnterior().getId() : null,
+                a.getMotivoCancelamento(),
+                a.getDataCancelamento(),
                 parcelasDto
         );
     }

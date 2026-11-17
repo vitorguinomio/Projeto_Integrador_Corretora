@@ -10,12 +10,16 @@ import {
   AlertTriangle,
   Clock,
   CheckCircle2,
-  FileText
+  FileText,
+  Pencil
 } from 'lucide-react';
-import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal, CodeText } from './ui/UiBits';
+import { PageHeader, StatusBadge, SectionCard, EmptyState, Modal, CodeText, useFeedback } from './ui/UiBits';
 import { apiFetch } from '../api';
-
+import { pode } from '../permissoes';
+import { dataLocalISO, formatarData, mapApolice, mapParcelas, mapSeguro } from '../mappers';
 export const ApolicesTab = ({ currentUser, currentRole }) => {
+  const podeGerenciar = pode(currentRole, 'gerenciarApolices');
+  const { showSuccess, showError, showWarning, showInfo } = useFeedback();
   const [apolices, setApolices] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [seguros, setSeguros] = useState([]);
@@ -32,6 +36,8 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
   const [selectedApoliceParcelas, setSelectedApoliceParcelas] = useState(null);
   const [renewingApolice, setRenewingApolice] = useState(null);
   const [cancelingApolice, setCancelingApolice] = useState(null);
+  const [editingApolice, setEditingApolice] = useState(null);
+  const [editForm, setEditForm] = useState({ corretorId: '', dataInicio: '', dataTermino: '', premio: '' });
 
   // Form Contratação
   const [form, setForm] = useState({
@@ -65,17 +71,18 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
       setLoading(true);
       const [apolicesData, clientesData, segurosData, corretoresData] = await Promise.all([
         apiFetch('/apolices').catch(() => []),
-        apiFetch('/clientes').catch(() => []),
+        // Listas de clientes/corretores só servem ao formulário de contratação (equipe)
+        podeGerenciar ? apiFetch('/clientes').catch(() => []) : [],
         apiFetch('/seguros').catch(() => []),
-        apiFetch('/corretores').catch(() => [])
+        podeGerenciar ? apiFetch('/corretores').catch(() => []) : []
       ]);
-      setApolices(apolicesData || []);
+      const segurosView = (segurosData || []).map(mapSeguro);
+      setApolices((apolicesData || []).map(mapApolice));
       setClientes(clientesData || []);
-      setSeguros(segurosData || []);
+      setSeguros(segurosView);
       setCorretores(corretoresData || []);
-
       if (clientesData?.length && segurosData?.length && corretoresData?.length) {
-        const today = new Date().toISOString().substring(0, 10);
+        const today = dataLocalISO();
         const nextYear = new Date();
         nextYear.setFullYear(nextYear.getFullYear() + 1);
         setForm((prev) => ({
@@ -84,8 +91,8 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
           seguroId: segurosData[0].id,
           corretorId: corretoresData[0].id,
           dataInicio: today,
-          dataTermino: nextYear.toISOString().substring(0, 10),
-          premio: segurosData[0].premioBase || 2400
+          dataTermino: dataLocalISO(nextYear),
+          premio: segurosView[0].premioBase || 0
         }));
       }
     } catch (err) {
@@ -111,52 +118,87 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
         clienteId: Number(form.clienteId),
         seguroId: Number(form.seguroId),
         corretorId: Number(form.corretorId),
-        premio: Number(form.premio),
+        valorPremio: Number(form.premio),
         dataInicio: form.dataInicio,
         dataTermino: form.dataTermino,
         quantidadeParcelas: Number(form.quantidadeParcelas) || 12
       };
-
       const nova = await apiFetch('/apolices', {
         method: 'POST',
         body: JSON.stringify(payload)
       });
-
-      setApolices([nova, ...apolices]);
+      setApolices([mapApolice(nova), ...apolices]);
       setIsNewModalOpen(false);
-      alert('Apólice contratada e parcelas geradas com sucesso!');
+      showSuccess('A apólice foi contratada e as parcelas foram geradas.', 'Apólice contratada!');
     } catch (err) {
       setFormError(err.message || 'Erro ao registrar apólice.');
     } finally {
       setSubmitting(false);
     }
   };
-
   const handleOpenParcelas = async (apolice) => {
     try {
       setSelectedApoliceParcelas(apolice);
       const parcelas = await apiFetch(`/apolices/${apolice.id}/parcelas`).catch(() => []);
-      setSelectedApoliceParcelas({ ...apolice, parcelas });
+      setSelectedApoliceParcelas({ ...apolice, parcelas: mapParcelas(parcelas || []) });
     } catch (err) {
       console.error('Erro ao buscar parcelas:', err);
     }
   };
-
   const handlePagarParcela = async (parcelaId) => {
     try {
-      await apiFetch(`/apolices/parcelas/${parcelaId}/pagar`, { method: 'POST' });
+      await apiFetch(`/apolices/parcelas/${parcelaId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'PAGO' })
+      });
       // Atualiza parcelas locais
       if (selectedApoliceParcelas?.parcelas) {
         const updated = selectedApoliceParcelas.parcelas.map((p) =>
-          p.id === parcelaId ? { ...p, situacao: 'Paga', dataPagamento: new Date().toISOString().substring(0, 10) } : p
+          p.id === parcelaId ? { ...p, status: 'PAGO', situacao: 'Paga' } : p
         );
         setSelectedApoliceParcelas({ ...selectedApoliceParcelas, parcelas: updated });
       }
-      alert('Pagamento de parcela confirmado!');
+      showSuccess('O pagamento da parcela foi registrado.', 'Pagamento confirmado!');
     } catch (err) {
-      alert(`Erro ao registrar pagamento: ${err.message}`);
+      showError(err.message, 'Erro ao registrar pagamento');
     }
   };
+
+  // Edição de apólice ativa (RF13): corretor, vigência e prêmio
+  const abrirEdicao = (apolice) => {
+    setEditingApolice(apolice);
+    setEditForm({
+      corretorId: apolice.corretorId ?? '',
+      dataInicio: apolice.dataInicio || '',
+      dataTermino: apolice.dataTermino || '',
+      premio: apolice.premio ?? ''
+    });
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const atualizada = await apiFetch(`/apolices/${editingApolice.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          corretorId: Number(editForm.corretorId),
+          dataInicio: editForm.dataInicio,
+          dataTermino: editForm.dataTermino,
+          valorPremio: Number(editForm.premio)
+        })
+      });
+      setApolices(apolices.map((a) => (a.id === atualizada.id ? mapApolice(atualizada) : a)));
+      setEditingApolice(null);
+      showSuccess(`A apólice ${atualizada.numeroApolice} foi atualizada.`, 'Apólice atualizada!');
+    } catch (err) {
+      showError(err.message, 'Erro ao atualizar apólice');
+    }
+  };
+
+  const valorPagoEdicao = (editingApolice?.parcelas || [])
+    .filter((p) => p.status === 'PAGO')
+    .reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
+  const pendentesEdicao = (editingApolice?.parcelas || []).filter((p) => p.status !== 'PAGO').length;
 
   const handleOpenRenew = (apolice) => {
     setRenewingApolice(apolice);
@@ -167,44 +209,44 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
       novoPremio: apolice.premio
     });
   };
-
   const handleRenewSubmit = async (e) => {
     e.preventDefault();
     try {
-      const renovada = await apiFetch(`/apolices/${renewingApolice.id}/renovar`, {
+      // O backend cria uma nova apólice (vinculada à anterior) e marca a antiga como EM_RENOVACAO
+      await apiFetch(`/apolices/${renewingApolice.id}/renovar`, {
         method: 'POST',
         body: JSON.stringify({
+          novaDataInicio: renewingApolice.dataTermino,
           novaDataTermino: renewForm.novaDataTermino,
-          novoPremio: Number(renewForm.novoPremio)
+          novoValorPremio: Number(renewForm.novoPremio),
+          quantidadeParcelas: renewingApolice.parcelas?.length || 12
         })
       });
-
-      setApolices(apolices.map((a) => (a.id === renewingApolice.id ? renovada : a)));
       setRenewingApolice(null);
-      alert('Apólice renovada com sucesso!');
+      await loadData();
+      showSuccess('A apólice foi renovada com sucesso.', 'Apólice renovada!');
     } catch (err) {
-      alert(`Erro na renovação: ${err.message}`);
+      showError(err.message, 'Erro na renovação');
     }
   };
 
   const handleCancelSubmit = async (e) => {
     e.preventDefault();
     if (!cancelMotivo.trim()) {
-      alert('Informe o motivo do cancelamento.');
+      showWarning('Informe o motivo do cancelamento para continuar.', 'Motivo obrigatório');
       return;
     }
     try {
       const cancelada = await apiFetch(`/apolices/${cancelingApolice.id}/cancelar`, {
         method: 'POST',
-        body: JSON.stringify({ motivo: cancelMotivo })
+        body: JSON.stringify({ motivo: cancelMotivo.trim() })
       });
-
-      setApolices(apolices.map((a) => (a.id === cancelingApolice.id ? cancelada : a)));
+      setApolices(apolices.map((a) => (a.id === cancelingApolice.id ? mapApolice(cancelada) : a)));
       setCancelingApolice(null);
       setCancelMotivo('');
-      alert('Apólice cancelada.');
+      showInfo('A apólice foi cancelada.', 'Apólice cancelada');
     } catch (err) {
-      alert(`Erro ao cancelar apólice: ${err.message}`);
+      showError(err.message, 'Erro ao cancelar apólice');
     }
   };
 
@@ -231,13 +273,18 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
   };
 
   return (
-    <div className="space-y-6 animate-rise">
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <PageHeader
         eyebrow="Contratos"
-        title="Apólices"
-        description="Acompanhe vigência e situação, registre contratações, renovações e cancelamentos."
+        title={currentRole === 'cliente' ? 'Minhas apólices' : 'Apólices'}
+        description={
+          currentRole === 'cliente'
+            ? 'Acompanhe a vigência, a situação e as parcelas dos seus seguros.'
+            : 'Acompanhe vigência e situação, registre contratações, renovações e cancelamentos.'
+        }
         actions={
+          podeGerenciar && (
           <button
             onClick={() => setIsNewModalOpen(true)}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
@@ -245,6 +292,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
             <Plus className="size-4" />
             Registrar contratação
           </button>
+          )
         }
       />
 
@@ -307,7 +355,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm">
               <thead>
-                <tr className="border-b border-border bg-muted/40 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <tr className="border-b border-border bg-muted/60 text-xs font-medium text-muted-foreground">
                   <th className="px-5 py-3.5">Apólice</th>
                   <th className="px-5 py-3.5">Cliente</th>
                   <th className="px-5 py-3.5">Corretor</th>
@@ -347,9 +395,18 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
 
                     <td className="px-5 py-4">
                       <StatusBadge status={apolice.situacao} />
+                      {apolice.dataCancelamento && (
+                        <p
+                          className="mt-1 max-w-40 truncate text-xs text-muted-foreground"
+                          title={apolice.motivoCancelamento || ''}
+                        >
+                          em {formatarData(apolice.dataCancelamento)}
+                          {apolice.motivoCancelamento ? ` · ${apolice.motivoCancelamento}` : ''}
+                        </p>
+                      )}
                     </td>
 
-                    <td className="px-5 py-4 text-right font-semibold text-foreground tabular">
+                    <td className="px-5 py-4 text-right font-semibold text-foreground tabular-nums">
                       {formatCurrency(apolice.premio)}
                     </td>
 
@@ -365,7 +422,17 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
 
                     <td className="px-5 py-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        {apolice.situacao !== 'Cancelada' && (
+                        {podeGerenciar && apolice.situacao === 'Ativa' && (
+                          <button
+                            onClick={() => abrirEdicao(apolice)}
+                            title="Editar apólice"
+                            aria-label={`Editar apólice ${apolice.numeroApolice}`}
+                            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <Pencil className="size-4" />
+                          </button>
+                        )}
+                        {podeGerenciar && apolice.situacao === 'Ativa' && (
                           <button
                             onClick={() => handleOpenRenew(apolice)}
                             title="Renovar apólice"
@@ -374,7 +441,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
                             <RefreshCw className="size-4" />
                           </button>
                         )}
-                        {apolice.situacao === 'Ativa' && (
+                        {podeGerenciar && apolice.situacao === 'Ativa' && (
                           <button
                             onClick={() => setCancelingApolice(apolice)}
                             title="Cancelar apólice"
@@ -410,7 +477,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 Cliente *
               </label>
               <select
@@ -427,7 +494,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
             </div>
 
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 Seguro *
               </label>
               <select
@@ -453,7 +520,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 Corretor Responsável *
               </label>
               <select
@@ -470,7 +537,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
             </div>
 
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 Número da Apólice (opcional)
               </label>
               <input
@@ -485,7 +552,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 Prêmio Anual (R$) *
               </label>
               <input
@@ -499,7 +566,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
             </div>
 
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 Início da Vigência
               </label>
               <input
@@ -512,7 +579,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
             </div>
 
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">
                 Término da Vigência
               </label>
               <input
@@ -526,7 +593,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
               Plano de Pagamento
             </label>
             <select
@@ -596,7 +663,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
 
                     <div className="flex items-center gap-3">
                       <StatusBadge status={p.situacao} />
-                      {!isPaga && (
+                      {!isPaga && podeGerenciar && (
                         <button
                           onClick={() => handlePagarParcela(p.id)}
                           className="px-2.5 py-1 rounded bg-success-soft text-success border border-success/30 font-semibold hover:bg-success hover:text-white transition-colors"
@@ -617,6 +684,89 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
         </div>
       </Modal>
 
+      {/* Modal Editar Apólice */}
+      <Modal
+        isOpen={!!editingApolice}
+        onClose={() => setEditingApolice(null)}
+        title="Editar apólice"
+        subtitle={`Apólice: ${editingApolice?.numeroApolice} · ${editingApolice?.clienteNome} · ${editingApolice?.seguroNome}`}
+      >
+        <form onSubmit={handleEditSubmit} className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Corretor responsável *</label>
+            <select
+              required
+              value={editForm.corretorId}
+              onChange={(e) => setEditForm({ ...editForm, corretorId: e.target.value })}
+              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+            >
+              {corretores.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">Início da vigência *</label>
+              <input
+                type="date"
+                required
+                value={editForm.dataInicio}
+                onChange={(e) => setEditForm({ ...editForm, dataInicio: e.target.value })}
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">Término da vigência *</label>
+              <input
+                type="date"
+                required
+                min={editForm.dataInicio || undefined}
+                value={editForm.dataTermino}
+                onChange={(e) => setEditForm({ ...editForm, dataTermino: e.target.value })}
+                className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Prêmio anual (R$) *</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              required
+              value={editForm.premio}
+              onChange={(e) => setEditForm({ ...editForm, premio: e.target.value })}
+              className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm"
+            />
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Se o prêmio mudar, as parcelas já pagas ({formatCurrency(valorPagoEdicao)}) são mantidas e o restante é
+              redistribuído entre as {pendentesEdicao} parcela(s) pendente(s). As datas de vencimento não mudam.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              type="button"
+              onClick={() => setEditingApolice(null)}
+              className="px-4 py-2 text-sm rounded-md border border-input hover:bg-muted"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90"
+            >
+              Salvar alterações
+            </button>
+          </div>
+        </form>
+      </Modal>
+
       {/* Modal Renovar Apólice */}
       <Modal
         isOpen={!!renewingApolice}
@@ -626,7 +776,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
       >
         <form onSubmit={handleRenewSubmit} className="space-y-4">
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
               Nova Data de Término (+1 ano)
             </label>
             <input
@@ -639,7 +789,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
           </div>
 
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
               Novo Prêmio Anual (R$)
             </label>
             <input
@@ -679,7 +829,7 @@ export const ApolicesTab = ({ currentUser, currentRole }) => {
       >
         <form onSubmit={handleCancelSubmit} className="space-y-4">
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
               Motivo do cancelamento *
             </label>
             <textarea

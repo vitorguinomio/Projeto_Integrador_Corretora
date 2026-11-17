@@ -38,6 +38,9 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      # Chave dos tokens JWT: vem do arquivo .env (copie de .env.example)
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_EXPIRATION_SECONDS: ${JWT_EXPIRATION_SECONDS:-86400}
     depends_on:
       postgres:
         condition: service_healthy

@@ -41,6 +41,12 @@ public class CorretorController {
         return ResponseEntity.ok(corretorService.atualizar(id, request));
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> excluir(@PathVariable Long id) {
+        corretorService.excluir(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @PatchMapping("/{id}/status")
     public ResponseEntity<CorretorResponse> alternarStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
         String status = body.getOrDefault("status", "ATIVO");

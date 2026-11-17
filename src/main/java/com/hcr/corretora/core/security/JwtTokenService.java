@@ -2,6 +2,8 @@ package com.hcr.corretora.core.security;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -9,6 +11,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HashMap;
@@ -21,14 +24,38 @@ public class JwtTokenService {
     private final long expirationSeconds;
     private final ObjectMapper objectMapper;
 
+    private static final Logger log = LoggerFactory.getLogger(JwtTokenService.class);
+    private static final int TAMANHO_MINIMO_CHAVE = 32;
+
+    /**
+     * A chave de assinatura vem da variável de ambiente JWT_SECRET (app.jwt.secret).
+     * - Ausente: gera uma chave aleatória a cada inicialização (bom para desenvolvimento;
+     *   os logins expiram quando a API reinicia).
+     * - Curta demais: a aplicação não sobe, para não rodar com uma chave fraca.
+     */
     public JwtTokenService(
-            @Value("${app.jwt.secret:hcr-super-secret-key-corretora-projeto-integrador-2026-unieuro}") String secret,
+            @Value("${app.jwt.secret:}") String secret,
             @Value("${app.jwt.expiration-seconds:86400}") long expirationSeconds,
             ObjectMapper objectMapper
     ) {
-        this.secret = secret;
+        this.secret = resolverChave(secret);
         this.expirationSeconds = expirationSeconds;
         this.objectMapper = objectMapper;
+    }
+
+    private static String resolverChave(String configurada) {
+        if (configurada == null || configurada.isBlank()) {
+            byte[] aleatoria = new byte[48];
+            new SecureRandom().nextBytes(aleatoria);
+            log.warn("JWT_SECRET não definida: usando uma chave aleatória temporária. Os logins deixam de valer quando "
+                    + "a aplicação reinicia. Defina JWT_SECRET (veja o arquivo .env.example) em qualquer ambiente real.");
+            return Base64.getEncoder().encodeToString(aleatoria);
+        }
+        if (configurada.length() < TAMANHO_MINIMO_CHAVE) {
+            throw new IllegalStateException("JWT_SECRET muito curta (" + configurada.length() + " caracteres). Use pelo menos "
+                    + TAMANHO_MINIMO_CHAVE + " caracteres aleatórios; para gerar: openssl rand -base64 48");
+        }
+        return configurada;
     }
 
     public String generateToken(Long userId, String email, String perfil) {

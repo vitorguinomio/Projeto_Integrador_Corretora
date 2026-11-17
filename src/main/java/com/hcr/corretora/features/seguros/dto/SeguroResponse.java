@@ -9,5 +9,6 @@ public record SeguroResponse(
         String descricao,
         String caracteristicas,
         BigDecimal valorBase,
+        BigDecimal percentualComissao,
         List<CoberturaDto> coberturas
 ) {}

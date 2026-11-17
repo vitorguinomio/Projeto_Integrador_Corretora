@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch, setAuthToken, getAuthToken } from './api';
-
+import { mapAlerta, mapUsuarioLogado } from './mappers';
+import { podeVerTela } from './permissoes';
 import { AppShell } from './components/AppShell';
 import { LoginView } from './components/LoginView';
 import { DashboardTab } from './components/DashboardTab';
 import { ClientesTab } from './components/ClientesTab';
 import { ApolicesTab } from './components/ApolicesTab';
+import { PremiosTab } from './components/PremiosTab';
 import { CotacoesTab } from './components/CotacoesTab';
 import { AlertasTab } from './components/AlertasTab';
 import { SegurosTab } from './components/SegurosTab';
@@ -17,178 +19,110 @@ import AuditoriaTab from './components/AuditoriaTab';
 export default function App() {
   const [activeTab, setActiveTab] = useState('painel');
   const [currentUser, setCurrentUser] = useState(null);
-  const [currentRole, setCurrentRole] = useState('admin'); // 'admin' | 'corretor' | 'cliente'
   const [unreadAlertsCount, setUnreadAlertsCount] = useState(0);
   const [isInitializing, setIsInitializing] = useState(true);
 
-  // Checa se há token salvo ou perfil padrão para iniciar
+  // O perfil vem sempre do usuário autenticado (GET /auth/me); não há troca manual de perfil
+  const currentRole = currentUser?.role || 'cliente';
+
+  const carregarAlertasNaoLidos = useCallback(async () => {
+    try {
+      const alertas = await apiFetch('/alertas');
+      setUnreadAlertsCount((alertas || []).map(mapAlerta).filter((a) => !a.lido).length);
+    } catch {
+      setUnreadAlertsCount(0);
+    }
+  }, []);
+
+  // Dados completos da sessão (inclui clienteId/corretorId, usados para filtrar "meus dados")
+  const carregarSessao = useCallback(async () => {
+    const me = await apiFetch('/auth/me');
+    setCurrentUser(mapUsuarioLogado(me));
+    await carregarAlertasNaoLidos();
+  }, [carregarAlertasNaoLidos]);
+
+  const handleLogout = useCallback(() => {
+    setAuthToken(null);
+    setCurrentUser(null);
+    setUnreadAlertsCount(0);
+    setActiveTab('painel');
+  }, []);
+
+  // Restaura a sessão se houver token salvo; sem token, mostra a tela de login
   useEffect(() => {
-    const initSession = async () => {
-      const token = getAuthToken();
-      if (token) {
+    const iniciar = async () => {
+      if (getAuthToken()) {
         try {
-          const me = await apiFetch('/auth/me');
-          setCurrentUser(me);
-          setCurrentRole(
-            me.perfilAcesso === 'ADMINISTRADOR'
-              ? 'admin'
-              : me.perfilAcesso === 'CORRETOR'
-              ? 'corretor'
-              : 'cliente'
-          );
+          await carregarSessao();
         } catch (e) {
           console.warn('Sessão expirada ou inválida:', e);
           setAuthToken(null);
         }
-      } else {
-        // Para comodidade da homologação direta do protótipo, inicializa logado como Helena (Admin)
-        // se desejar deslogar, basta clicar no ícone de sair no rodapé da sidebar.
-        try {
-          const loginData = await apiFetch('/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({ email: 'admin@hcr.com', senha: 'admin123' })
-          });
-          setAuthToken(loginData.token);
-          setCurrentUser({
-            id: loginData.id,
-            nome: loginData.nome,
-            email: loginData.email,
-            perfilAcesso: loginData.perfil
-          });
-          setCurrentRole('admin');
-        } catch {
-          // segue sem login
-        }
       }
-
-      // Carrega contagem de alertas não lidos
-      try {
-        const alertas = await apiFetch('/alertas');
-        if (alertas && Array.isArray(alertas)) {
-          const unread = alertas.filter((a) => !a.lido).length;
-          setUnreadAlertsCount(unread || 9);
-        }
-      } catch {
-        setUnreadAlertsCount(9);
-      } finally {
-        setIsInitializing(false);
-      }
+      setIsInitializing(false);
     };
+    iniciar();
+  }, [carregarSessao]);
 
-    initSession();
-  }, []);
+  // Token expirado ou usuário desativado durante o uso: volta para o login
+  useEffect(() => {
+    window.addEventListener('hcr:sessao-expirada', handleLogout);
+    return () => window.removeEventListener('hcr:sessao-expirada', handleLogout);
+  }, [handleLogout]);
 
-  const handleLoginSuccess = (userData) => {
-    setCurrentUser(userData);
-    setCurrentRole(userData.role || 'admin');
+  // Mantém o contador do sino atualizado ao navegar (ex.: após marcar alertas como lidos)
+  useEffect(() => {
+    if (currentUser) carregarAlertasNaoLidos();
+  }, [activeTab, currentUser, carregarAlertasNaoLidos]);
+
+  const handleLoginSuccess = async (userData) => {
+    try {
+      await carregarSessao();
+    } catch {
+      setCurrentUser(userData);
+    }
     setActiveTab('painel');
   };
 
-  const handleLogout = () => {
-    setAuthToken(null);
-    setCurrentUser(null);
-    setActiveTab('painel');
-  };
+  // Impede abrir uma tela que o perfil não pode ver
+  const abrirTela = (tela) => setActiveTab(podeVerTela(currentRole, tela) ? tela : 'painel');
 
   if (isInitializing) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4 text-foreground">
-        <span className="size-12 rounded-xl bg-gradient-signal font-display text-2xl font-bold text-signal-foreground flex items-center justify-center shadow-lift animate-pulse">
-          H
-        </span>
-        <p className="text-sm font-medium text-muted-foreground">
-          Carregando HCR Corretora...
-        </p>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3 text-foreground">
+        <span className="size-10 rounded-md bg-primary animate-pulse" />
+        <p className="text-sm text-muted-foreground">Carregando…</p>
       </div>
     );
   }
 
-  // Se o usuário deslogar, exibe a tela de login idêntica ao Lovable
   if (!currentUser) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
+  const tela = podeVerTela(currentRole, activeTab) ? activeTab : 'painel';
+  const props = { currentUser, currentRole };
+
   return (
     <AppShell
-      activeTab={activeTab}
-      setActiveTab={setActiveTab}
+      activeTab={tela}
+      setActiveTab={abrirTela}
       currentUser={currentUser}
       currentRole={currentRole}
-      setCurrentRole={setCurrentRole}
       onLogout={handleLogout}
       unreadAlertsCount={unreadAlertsCount}
     >
-      {activeTab === 'painel' && (
-        <DashboardTab
-          setActiveTab={setActiveTab}
-          currentUser={currentUser}
-          currentRole={currentRole}
-        />
-      )}
-
-      {activeTab === 'clientes' && (
-        <ClientesTab
-          currentUser={currentUser}
-          currentRole={currentRole}
-        />
-      )}
-
-      {activeTab === 'apolices' && (
-        <ApolicesTab
-          currentUser={currentUser}
-          currentRole={currentRole}
-        />
-      )}
-
-      {activeTab === 'cotacoes' && (
-        <CotacoesTab
-          currentUser={currentUser}
-          currentRole={currentRole}
-        />
-      )}
-
-      {activeTab === 'alertas' && (
-        <AlertasTab
-          setActiveTab={setActiveTab}
-          currentUser={currentUser}
-          currentRole={currentRole}
-        />
-      )}
-
-      {activeTab === 'seguros' && (
-        <SegurosTab
-          currentUser={currentUser}
-          currentRole={currentRole}
-        />
-      )}
-
-      {activeTab === 'corretores' && (
-        <CorretoresTab
-          currentUser={currentUser}
-          currentRole={currentRole}
-        />
-      )}
-
-      {activeTab === 'usuarios' && (
-        <UsuariosTab
-          currentUser={currentUser}
-          currentRole={currentRole}
-        />
-      )}
-
-      {activeTab === 'relatorios' && (
-        <RelatoriosTab
-          currentUser={currentUser}
-          currentRole={currentRole}
-        />
-      )}
-
-      {activeTab === 'auditoria' && (
-        <AuditoriaTab
-          currentUser={currentUser}
-          currentRole={currentRole}
-        />
-      )}
+      {tela === 'painel' && <DashboardTab setActiveTab={abrirTela} {...props} />}
+      {tela === 'clientes' && <ClientesTab {...props} />}
+      {tela === 'apolices' && <ApolicesTab {...props} />}
+      {tela === 'premios' && <PremiosTab setActiveTab={abrirTela} {...props} />}
+      {tela === 'cotacoes' && <CotacoesTab {...props} />}
+      {tela === 'alertas' && <AlertasTab setActiveTab={abrirTela} {...props} />}
+      {tela === 'seguros' && <SegurosTab {...props} />}
+      {tela === 'corretores' && <CorretoresTab {...props} />}
+      {tela === 'usuarios' && <UsuariosTab {...props} />}
+      {tela === 'relatorios' && <RelatoriosTab {...props} />}
+      {tela === 'auditoria' && <AuditoriaTab {...props} />}
     </AppShell>
   );
 }

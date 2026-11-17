@@ -136,13 +136,14 @@ public class DataInitializer implements CommandLineRunner {
         Cliente cliente1 = new Cliente(
                 null,
                 "João Pereira da Silva",
-                "123.456.789-00",
+                "123.456.789-09",
                 LocalDate.of(1988, 4, 12),
                 "joao.silva@email.com",
                 userCliente1
         );
         cliente1.addEndereco(new Endereco(null, "70000-000", "Asa Sul, Bloco B", "204", "Apto 301", "Asa Sul", "Brasília", "DF", cliente1));
         cliente1.addTelefone(new Telefone(null, "61", "98765-4321", "CELULAR", cliente1));
+        cliente1.setCorretor(corretor1);
         cliente1 = clienteRepository.save(cliente1);
 
         Usuario userCliente2 = new Usuario(
@@ -157,13 +158,14 @@ public class DataInitializer implements CommandLineRunner {
         Cliente cliente2 = new Cliente(
                 null,
                 "Mariana de Souza Oliveira",
-                "987.654.321-99",
+                "987.654.321-00",
                 LocalDate.of(1993, 8, 20),
                 "mariana.souza@email.com",
                 userCliente2
         );
         cliente2.addEndereco(new Endereco(null, "71000-000", "Águas Claras, Rua 12", "15", "Residencial Solar", "Norte", "Brasília", "DF", cliente2));
         cliente2.addTelefone(new Telefone(null, "61", "99123-4567", "CELULAR", cliente2));
+        cliente2.setCorretor(corretor2);
         cliente2 = clienteRepository.save(cliente2);
 
         // 4. Criar Seguros com Coberturas
@@ -174,6 +176,7 @@ public class DataInitializer implements CommandLineRunner {
                 "Cobertura nacional, guincho ilimitado, proteção contra roubo, furto, colisão e danos a terceiros.",
                 new BigDecimal("2400.00")
         );
+        seguroAuto.setPercentualComissao(new BigDecimal("15.00"));
         seguroAuto.addCobertura(new Cobertura(null, "Colisão e Incêndio", new BigDecimal("1200.00"), seguroAuto));
         seguroAuto.addCobertura(new Cobertura(null, "Roubo e Furto Qualificado", new BigDecimal("800.00"), seguroAuto));
         seguroAuto.addCobertura(new Cobertura(null, "Danos Materiais e Corporais a Terceiros", new BigDecimal("400.00"), seguroAuto));
@@ -186,6 +189,7 @@ public class DataInitializer implements CommandLineRunner {
                 "Incêndio, raio, explosão, danos elétricos, chaveiro 24h, eletricista e encanador.",
                 new BigDecimal("850.00")
         );
+        seguroResidencial.setPercentualComissao(new BigDecimal("20.00"));
         seguroResidencial.addCobertura(new Cobertura(null, "Incêndio, Raio e Explosão", new BigDecimal("500.00"), seguroResidencial));
         seguroResidencial.addCobertura(new Cobertura(null, "Danos Elétricos", new BigDecimal("200.00"), seguroResidencial));
         seguroResidencial.addCobertura(new Cobertura(null, "Assistência Residencial 24h", new BigDecimal("150.00"), seguroResidencial));
@@ -198,6 +202,7 @@ public class DataInitializer implements CommandLineRunner {
                 "Morte acidental, invalidez por acidente, auxílio funeral completo e assistência médica.",
                 new BigDecimal("600.00")
         );
+        seguroVida.setPercentualComissao(new BigDecimal("25.00"));
         seguroVida.addCobertura(new Cobertura(null, "Morte Qualquer Causa", new BigDecimal("350.00"), seguroVida));
         seguroVida.addCobertura(new Cobertura(null, "Invalidez Permanente Total ou Parcial", new BigDecimal("250.00"), seguroVida));
         seguroVida = seguroRepository.save(seguroVida);
