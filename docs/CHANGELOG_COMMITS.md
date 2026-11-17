@@ -222,7 +222,19 @@ Este documento registra detalhadamente as entregas efetuadas no repositório Git
   3. `database/init/01-schema.sql` e `database/init/02-seed-apresentacao.sql`:
      - Expansão da carga SQL de apresentação cobrindo todas as 14 tabelas do modelo físico no PostgreSQL (`17` usuários, `3` administradores, `5` corretores, `9` clientes PF/PJ, `10` endereços, `10` telefones, `6` seguros, `18` coberturas, `8` cotações, `6` propostas, `8` apólices, `48` parcelas de pagamento, `8` notificações de alerta e `10` logs de auditoria).
 
+---
 
-
-
+## [Commit 13] - Automação de Capturas Anotadas (Playwright + Pillow) e Manual Completo do Sistema
+- **Data/Hora:** 2026-11-16 21:07
+- **Mensagem:** `docs: gerador automatizado de capturas com lupa (playwright/pillow) e manual completo do sistema`
+- **O que foi enviado para o Git:**
+  1. `tools/manual_generator/`:
+     - `requirements.txt`: Dependências isoladas do gerador (`playwright` e `pillow`).
+     - `.gitignore`: Isolamento de ambiente virtual (`.venv/`), caches Python e artefatos temporários.
+     - `generate_manual_images.py`: Script de automação em Python que valida a disponibilidade dos contêineres Docker (com ponte automática para `http://localhost:8000`), navega pela SPA React em viewport `1920x1080`, extrai o `bounding_box` real via DOM e aplica o efeito de Lupa (*Zoom Callout* `2.25x` com margem de respiro, sombra leve, borda `#FF0000` de `3px` e linha indicadora sólida `#FF0000` de `3px`).
+     - `README.md`: Documentação objetiva de instalação e reexecução do gerador sempre que houver alterações visuais no front-end.
+  2. `docs/assets/manual/passo_01.png` a `passo_18.png`:
+     - 18 capturas reais anotadas cobrindo todos os fluxos do sistema: Login JWT, Painel Geral, Clientes (busca, cadastro modal e histórico 360°), Apólices (listagem, contratação, quitação de parcelas e renovação mantendo data inicial do 1º contrato), Cotações e Propostas, Alertas de Vencimento (30 dias), Catálogo de Seguros e Coberturas, Corretores SUSEP, Usuários/Permissões (RBAC), Relatórios CSV, Trilha de Auditoria e Logout.
+  3. `docs/MANUAL_DO_SISTEMA.md`:
+     - Manual operacional e técnico passo a passo com todas as 18 capturas anotadas embutidas e tabelas de credenciais e perfis de acesso.
 
