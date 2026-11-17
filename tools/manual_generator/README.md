@@ -29,12 +29,16 @@ python3 -m venv .venv
 
 ---
 
-## Como Regerar as Imagens do Manual
+## Como Regerar as Imagens e o Manual em PDF
 
 Sempre que houver alterações visuais no front-end React, execute a partir da **raiz do projeto**:
 
 ```bash
+# 1. Regerar as 18 capturas anotadas (passo_01.png a passo_18.png)
 ./tools/manual_generator/.venv/bin/python tools/manual_generator/generate_manual_images.py
+
+# 2. Compilar o Markdown + Imagens em PDF (docs/MANUAL_DO_SISTEMA.pdf)
+./tools/manual_generator/.venv/bin/python tools/manual_generator/generate_manual_pdf.py
 ```
 
-As 18 capturas anotadas (`passo_01.png` a `passo_18.png`) serão atualizadas automaticamente em `docs/assets/manual/`, prontas para visualização em `docs/MANUAL_DO_SISTEMA.md`.
+As 18 capturas anotadas (`passo_01.png` a `passo_18.png`) serão atualizadas automaticamente em `docs/assets/manual/`, prontas para visualização em `docs/MANUAL_DO_SISTEMA.md` e no documento consolidado `docs/MANUAL_DO_SISTEMA.pdf`.

@@ -238,3 +238,17 @@ Este documento registra detalhadamente as entregas efetuadas no repositório Git
   3. `docs/MANUAL_DO_SISTEMA.md`:
      - Manual operacional e técnico passo a passo com todas as 18 capturas anotadas embutidas e tabelas de credenciais e perfis de acesso.
 
+---
+
+## [Commit 14] - Compilação do Manual Completo do Sistema em PDF com Assets Embutidos
+- **Data/Hora:** 2026-11-16 21:25
+- **Mensagem:** `docs: compilacao do manual completo do sistema em pdf (docs/MANUAL_DO_SISTEMA.pdf) com capturas embutidas`
+- **O que foi enviado para o Git:**
+  1. `tools/manual_generator/generate_manual_pdf.py` e `tools/manual_generator/requirements.txt`:
+     - Script automatizado em Python (`markdown` + `playwright`) que unifica o conteúdo de `docs/MANUAL_DO_SISTEMA.md` com as 18 imagens anotadas de `docs/assets/manual/` (embutidas em Base64 de alta resolução) e exporta o documento paginado em formato A4.
+  2. `docs/MANUAL_DO_SISTEMA.pdf`:
+     - Manual completo do sistema em PDF pronto para distribuição e apresentação, com capa institucional HCR Corretora, sumário, tabelas de credenciais/perfis, os 18 passos ilustrados com lupa (`#FF0000`) e cabeçalho/rodapé numerado.
+  3. `tools/manual_generator/README.md`:
+     - Inclusão do comando para regerar o PDF sempre que o manual ou as capturas forem atualizados.
+
+
